@@ -19,6 +19,7 @@ ser fonte sem ninguém decidir isso.
 | `agent-turn.workflow.json` | o turno do agente (runtime da IA) |
 | `crm-vivo.architecture.json` | subsistema **CRM Vivo** — 24 peças, 44 arestas, 6 faixas |
 | `atualizacao-self-service.architecture.json` | botão de atualizar pela UI — `agent.sh`/`update.sh` (host) ↔ rota do agente ↔ tabelas de instância ↔ rodapé/tela |
+| `gestao-funis.architecture.json` | gestão de funis pela tela do Kanban — 18 peças, 30 arestas; as três dependências do funil e por que só uma o banco defende |
 
 ### `crm-vivo.architecture.json` é PLANTA, não fotografia
 
