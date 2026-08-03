@@ -52,13 +52,33 @@ function textoDoErro(e: unknown): string {
 }
 
 export function FunisClient({
-  funis,
+  funis: funisDoServidor,
   podeGerenciar,
 }: {
   funis: FunilDaLista[];
   /** Espelha o `requireRole("manager")` das rotas — ver o comentário da page. */
   podeGerenciar: boolean;
 }) {
+  /**
+   * ⚠️ A LISTA VEM DO SERVIDOR E É ATUALIZADA PELO CORPO DA RESPOSTA.
+   *
+   * As rotas releem os funis do banco antes de responder, então aplicar o corpo
+   * é mostrar o que o banco tem — sem depender de o `router.refresh()` vencer a
+   * corrida contra os prefetches RSC da barra lateral (medido: numa rodada o
+   * rename apareceu em 0,6s, noutra não apareceu em 7s, mesmo build). O ajuste
+   * abaixo mantém as props no comando quando é o SERVIDOR que traz novidade —
+   * navegação, refresh, outra aba.
+   */
+  const [funis, setFunis] = useState<FunilDaLista[]>(funisDoServidor);
+  const [ultimoDoServidor, setUltimoDoServidor] = useState<FunilDaLista[]>(funisDoServidor);
+  // Ajuste DURANTE o render, não em efeito: é o padrão do React para "a prop
+  // mudou, reponha o estado" e não dispara render em cascata (o efeito
+  // equivalente dispara — o compilador avisa, e com razão).
+  if (funisDoServidor !== ultimoDoServidor) {
+    setUltimoDoServidor(funisDoServidor);
+    setFunis(funisDoServidor);
+  }
+
   const criar = useCriarFunil();
   const editar = useEditarFunil();
   const arquivar = useArquivarFunil();
@@ -75,7 +95,10 @@ export function FunisClient({
     if (!nome) return;
     setErro(null);
     criar.mutate(nome, {
-      onSuccess: () => setNovo(null),
+      onSuccess: (r) => {
+        setFunis(r.data.pipelines);
+        setNovo(null);
+      },
       onError: (e) => setErro({ id: null, texto: textoDoErro(e) }),
     });
   }
@@ -85,7 +108,10 @@ export function FunisClient({
     editar.mutate(
       { id, patch },
       {
-        onSuccess: () => setRenomeando(null),
+        onSuccess: (r) => {
+          setFunis(r.data.pipelines);
+          setRenomeando(null);
+        },
         onError: (e) => setErro({ id, texto: textoDoErro(e) }),
       },
     );
@@ -96,7 +122,10 @@ export function FunisClient({
     arquivar.mutate(
       { id, definitivo },
       {
-        onSuccess: () => setArquivando(null),
+        onSuccess: (r) => {
+          setFunis(r.data.pipelines);
+          setArquivando(null);
+        },
         // A recusa fica NO PAINEL, não numa faixa longe do botão: ela é a
         // resposta à pergunta que o usuário acabou de fazer.
         onError: (e) => setArquivando({ id, erro: textoDoErro(e) }),

@@ -7,17 +7,23 @@ import { apiClient } from "@/lib/api/client";
 /**
  * Criar, editar e arquivar FUNIL — a escrita da tela do Kanban.
  *
- * ⚠️ NÃO HÁ QUERY AQUI, E NÃO É ECONOMIA. A lista vem do Server Component, e
- * relê por `router.refresh()`. Uma query client-side teria de chamar
- * `GET /api/v1/pipelines`, que exige `manager` — mas a tela do Kanban é aberta a
- * QUALQUER papel autenticado: um `agent` relendo por ali levaria 403 e ficaria
- * sem quadro nenhum. Uma fonte de verdade só (o servidor), e o papel que pode
- * LER continua diferente do papel que pode ESCREVER.
+ * ⚠️ A TELA USA O CORPO DA RESPOSTA, NÃO O `router.refresh()`, E ISSO FOI MEDIDO.
+ * As três rotas releem os funis do banco antes de responder, então o corpo JÁ é
+ * "o que o banco tem". Depender do refresh para exibir o resultado da própria
+ * ação é uma corrida: com os prefetches RSC da barra lateral em voo, o refresh
+ * é atropelado e a tela fica no estado anterior. Observado em duas rodadas do
+ * mesmo build — numa o rename apareceu em 0,6s, na outra não apareceu em 7s, com
+ * `GET /app/kanban?_rsc=…` respondendo 200 e `no-store` nas duas. Aplicar o corpo
+ * é determinístico por construção; não há janela em que a tela minta.
  *
- * ⚠️ RELÊ DEPOIS DE QUALQUER RESPOSTA — sucesso OU erro. Não há concorrência
- * otimista nestas rotas: duas abas editando a mesma lista terminam em "o último
- * ganha", e o 409 diz literalmente "recarregue a página". Reler é o preço
- * honesto numa tela de configuração ocasional.
+ * ⚠️ O `router.refresh()` CONTINUA, e não é cinto e suspensório: ele mantém o
+ * servidor coerente para a PRÓXIMA navegação (voltar ao Kanban depois de sair
+ * dele). O que mudou é que a tela não depende mais dele para mostrar o que
+ * acabou de acontecer.
+ *
+ * ⚠️ NÃO HÁ QUERY AQUI. A leitura inicial é do Server Component, porque
+ * `GET /api/v1/pipelines` exige `manager` e a tela do Kanban é aberta a QUALQUER
+ * papel: um `agent` relendo por ali levaria 403 e ficaria sem quadro.
  */
 
 const ROTA = "/api/v1/pipelines";
@@ -31,6 +37,18 @@ export interface PatchDeFunil {
   depois_de?: string | null;
 }
 
+/** O funil como as rotas o devolvem — a mesma forma que a página entrega por props. */
+export interface FunilDaResposta {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  position: number;
+  is_default: boolean;
+}
+
+type Resposta = { data: { pipelines: FunilDaResposta[] } };
+
 function useReler() {
   const router = useRouter();
   return () => router.refresh();
@@ -39,7 +57,7 @@ function useReler() {
 export function useCriarFunil() {
   const reler = useReler();
   return useMutation({
-    mutationFn: (name: string) => apiClient.post<unknown>(ROTA, { name }),
+    mutationFn: (name: string) => apiClient.post<Resposta>(ROTA, { name }),
     onSettled: reler,
   });
 }
@@ -48,7 +66,7 @@ export function useEditarFunil() {
   const reler = useReler();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: PatchDeFunil }) =>
-      apiClient.patch<unknown>(doFunil(id), patch),
+      apiClient.patch<Resposta>(doFunil(id), patch),
     onSettled: reler,
   });
 }
@@ -60,7 +78,7 @@ export function useArquivarFunil() {
     // sem formulário e sem automação apontando para ele); no resto a rota recusa
     // com a explicação, e a tela a mostra.
     mutationFn: ({ id, definitivo }: { id: string; definitivo?: boolean }) =>
-      apiClient.delete<unknown>(definitivo ? `${doFunil(id)}?definitivo=1` : doFunil(id)),
+      apiClient.delete<Resposta>(definitivo ? `${doFunil(id)}?definitivo=1` : doFunil(id)),
     onSettled: reler,
   });
 }
