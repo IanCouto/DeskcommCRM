@@ -30,6 +30,8 @@ export interface FunilEditavel {
   position: number;
   is_default: boolean;
   is_archived: boolean;
+  /** Opcional porque NENHUMA regra daqui a usa — ela só existe para a tela. */
+  description?: string | null;
 }
 
 /** O que amarra o funil ao resto do sistema, contado ANTES de arquivar ou excluir. */
@@ -130,12 +132,16 @@ export function validarArquivamento(
 
   if (deps.fontesDeWebhook.length > 0) {
     const plural = deps.fontesDeWebhook.length > 1;
+    // ⚠️ A FRASE NÃO AFIRMA QUE A ENTRADA VAI PARAR, e a diferença não é
+    // estilo: a contagem inclui fonte DESATIVADA (a exclusão a levaria junto
+    // pelo cascade), e prometer que "o lead pararia de chegar" seria falso para
+    // ela. O que vale nos dois casos é o vínculo, e é o vínculo que se diz.
     return {
       ok: false,
       erro:
-        `«${funil.name}» é o destino ${plural ? "dos formulários" : "do formulário"} ${lista(deps.fontesDeWebhook)}: ` +
-        `arquivá-lo pararia a entrada de lead ${plural ? "deles" : "dele"}. Aponte ${plural ? "os formulários" : "o formulário"} ` +
-        `para outro funil antes.`,
+        `«${funil.name}» é o destino ${plural ? "dos formulários" : "do formulário"} ${lista(deps.fontesDeWebhook)}. ` +
+        `Aponte ${plural ? "os formulários" : "o formulário"} para outro funil antes de arquivar este — senão o lead ` +
+        `que chegar por ${plural ? "eles" : "ele"} fica sem quadro.`,
     };
   }
 

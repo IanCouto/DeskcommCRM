@@ -185,5 +185,11 @@ export type AuditAction =
   | "pipeline.stage_created"
   | "pipeline.stage_updated"
   | "pipeline.stage_archived"
+  | "pipeline.created"
+  | "pipeline.updated"
+  | "pipeline.archived"
+  // Só existe para o funil que nunca recebeu negócio: com histórico, a operação
+  // vira `pipeline.archived` e a linha continua no banco.
+  | "pipeline.deleted"
   | "system.update_requested"
   | "system.update_finished";

@@ -1,5 +1,5 @@
 /**
- * Dublê de banco das rotas de etapas (`app/api/v1/pipelines/[id]/stages/**`).
+ * Dublê de banco das rotas de FUNIL e de ETAPA (`app/api/v1/pipelines/**`).
  *
  * Ele APLICA os filtros `eq`, a projeção do `select()`, o `order()` e o
  * `count`/`head` de verdade. Um stub de linha fixa deixaria "etapa de outra
@@ -68,8 +68,31 @@ export function negocio(id: string, stageId: string, over: Partial<LeadRow> = {}
   };
 }
 
+export interface PipelineRow {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  position: number;
+  is_default: boolean;
+  is_archived: boolean;
+  organization_id: string;
+}
+
+export function funilRow(over: Partial<PipelineRow> & { id: string; name: string }): PipelineRow {
+  return {
+    slug: over.id,
+    description: null,
+    position: 1000,
+    is_default: false,
+    is_archived: false,
+    organization_id: ORG_ID,
+    ...over,
+  };
+}
+
 export interface Escrita {
-  tipo: "update" | "insert";
+  tipo: "update" | "insert" | "delete";
   table: string;
   /** O corpo como a rota o mandou: linha no update/insert simples, ARRAY no insert multi-linha. */
   patch: Record<string, unknown> | Record<string, unknown>[];
@@ -81,6 +104,12 @@ export interface DbOpts {
   pipelineOrg?: string;
   stages?: StageRow[];
   leads?: LeadRow[];
+  /** Os funis da org. Sem isto, uma linha só (`PIPE`), que é o que as rotas de etapa precisam. */
+  pipelines?: PipelineRow[];
+  /** Fontes de webhook — o `default_pipeline_id` delas é FK CASCADE para o funil. */
+  webhookSources?: Array<Record<string, unknown>>;
+  /** Automações — `actions` é jsonb cru, sem FK para o funil. */
+  automationRules?: Array<Record<string, unknown>>;
   /** Erro do banco na n-ésima escrita (1-based), como o PostgREST devolveria. */
   writeError?: (n: number, table: string) => { code: string; message: string } | null;
 }
@@ -97,6 +126,8 @@ export interface Registro {
     crm_stages: Linha[];
     crm_leads: Linha[];
     crm_lead_activities: Linha[];
+    webhook_sources: Linha[];
+    automation_rules: Linha[];
   };
 }
 
@@ -106,10 +137,14 @@ export function makeDb(opts: DbOpts = {}): Registro {
     eventos: [],
     rpcs: [],
     tabelas: {
-      crm_pipelines: [{ id: PIPE, name: "Pedidos", organization_id: opts.pipelineOrg ?? ORG_ID }],
+      crm_pipelines: (opts.pipelines ?? [
+        { id: PIPE, name: "Pedidos", organization_id: opts.pipelineOrg ?? ORG_ID },
+      ]) as unknown as Linha[],
       crm_stages: (opts.stages ?? []) as unknown as Linha[],
       crm_leads: (opts.leads ?? []) as unknown as Linha[],
       crm_lead_activities: [],
+      webhook_sources: (opts.webhookSources ?? []) as Linha[],
+      automation_rules: (opts.automationRules ?? []) as Linha[],
     },
   };
   const tables = registro.tabelas as unknown as Record<string, Linha[] | undefined>;
@@ -123,6 +158,7 @@ export function makeDb(opts: DbOpts = {}): Registro {
     let ordem: string | null = null;
     let contar = false;
     let head = false;
+    let apagar = false;
 
     const casam = () => (tables[table] ?? []).filter((r) => filtros.every(([c, v]) => r[c] === v));
 
@@ -135,7 +171,7 @@ export function makeDb(opts: DbOpts = {}): Registro {
     };
 
     async function escreve(
-      tipo: "update" | "insert",
+      tipo: Escrita["tipo"],
       corpo: Record<string, unknown> | Record<string, unknown>[],
       aplica: () => void,
     ): Promise<{ data: unknown; error: unknown; count: number | null }> {
@@ -153,6 +189,20 @@ export function makeDb(opts: DbOpts = {}): Registro {
     }
 
     async function run(): Promise<{ data: unknown; error: unknown; count: number | null }> {
+      // ⚠️ O DELETE NÃO CASCATEIA AQUI, e é deliberado. No banco,
+      // `webhook_sources.default_pipeline_id` é `ON DELETE CASCADE` — simular
+      // isso faria o dublê provar o Postgres em vez da rota. O que a rota deve
+      // garantir é NUNCA chegar ao delete com dependente vivo, e é isso que os
+      // testes medem: a escrita que não sai.
+      if (apagar) {
+        const alvos = casam();
+        const r = await escreve("delete", {}, () => {
+          const restantes = (tables[table] ?? []).filter((l) => !alvos.includes(l));
+          tables[table] = restantes;
+          registro.tabelas[table as keyof Registro["tabelas"]] = restantes;
+        });
+        return r.error ? r : { ...r, data: alvos.map((l) => ({ ...l })) };
+      }
       if (patch) {
         const alvos = casam();
         const r = await escreve("update", patch, () => {
@@ -195,6 +245,10 @@ export function makeDb(opts: DbOpts = {}): Registro {
       },
       update: (p: Record<string, unknown>) => {
         patch = p;
+        return b;
+      },
+      delete: () => {
+        apagar = true;
         return b;
       },
       eq: (c: string, v: unknown) => {
