@@ -44,16 +44,14 @@ const LINKS: SettingsLink[] = [
     description: "Para onde o agente leva o card em cada passo do atendimento.",
     managerOnly: true,
   },
+  // Conectar canal — oficial ou por QR — vive em Conexões, não aqui. O card fica
+  // como PONTE, apontando direto para a aba: quem já sabia procurar em
+  // Configurações continua achando, e ninguém precisa aprender que a mesma
+  // pergunta tem duas respostas dependendo de qual WhatsApp é.
   {
-    href: "/app/settings/canal-oficial",
-    title: "Canal oficial (Cloud API)",
-    description: "Conectar o número oficial da Meta e o webhook.",
-    adminOnly: true,
-  },
-  {
-    href: "/app/settings/templates",
-    title: "Templates do WhatsApp",
-    description: "Espelho dos templates da Meta e seus parâmetros.",
+    href: "/app/connections?aba=oficial",
+    title: "Canal oficial (Meta) e templates",
+    description: "Fica em Conexões, junto dos números por QR.",
     adminOnly: true,
   },
   {
