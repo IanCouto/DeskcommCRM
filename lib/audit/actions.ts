@@ -59,6 +59,9 @@ export type AuditAction =
   | "lead.tags_changed"
   | "message.sent"
   | "message.received"
+  // Uma rodada do cron `recover-stuck-messages` que de fato marcou mensagem
+  // como falha (rodada vazia não vira linha — varredura não é mutação).
+  | "message.recover_stuck_run"
   | "contact.blocked"
   | "ai.handoff_triggered"
   | "ai.reactivated_by_agent"
@@ -129,6 +132,17 @@ export type AuditAction =
   | "ai_agent.run_failed"
   | "channel.connected"
   | "channel.reconnected"
+  // Duas ações distintas de propósito: `deleted` apagou a linha (canal virgem),
+  // `archived` só a escondeu porque conversas/mensagens ainda a referenciam.
+  // A auditoria precisa distinguir o que sumiu do que continua no banco.
+  | "channel.deleted"
+  | "channel.archived"
+  // Contraparte de `archived`: a linha escondida voltou à vida (reconexão do
+  // canal oficial, retomada do pareamento). Sem ela o histórico registra a
+  // exclusão e cala sobre o canal ter voltado a receber e enviar. Emitida por
+  // `lib/channels/reactivate.ts` — o único caminho de volta, e é o que faz a
+  // frase acima valer para os DOIS casos em vez de para o que lembraram.
+  | "channel.reactivated"
   | "authz.denied"
   | "team.role_changed"
   | "leads.bulk_assigned"

@@ -272,6 +272,14 @@ export const AGENT_TOOL_DEFS = {
 } as const;
 
 /**
+ * Quantos vetos de `internal_vocabulary_leak` o turno tolera antes de o fail-safe soltar
+ * o envio (ver o bloco em `send_message.execute`). Mesmo degrau do fail-safe de casos
+ * humanos — 1ª vez ensina, a 2ª decide — porque a assimetria é a mesma: uma reescrita
+ * que o modelo não fez não vale um cliente sem resposta.
+ */
+export const MAX_VETOS_DE_VOCABULARIO_INTERNO = 2;
+
+/**
  * Job já saiu de 'running' por decisão do próprio run (ex.: cancelJob no veto
  * is_blocked) — o worker NÃO deve completar nem re-tentar. main.ts trata via
  * failJob, que no-opa (lease já não é dele) — estado final é o que o run deixou.
@@ -978,6 +986,10 @@ export async function runAgentTurn(
   // 1º veto no turno é erro-de-ensino (o modelo re-tenta); persistir uma 2ª vez aciona o
   // auto-abre-caso (ver send_message.execute). Por turno (closure), nunca cross-turno.
   let casePromiseVetoCount = 0;
+  // Contador do fail-safe do gate de vazamento de vocabulário interno
+  // (`internal_vocabulary_leak`): 1º veto no turno ensina o modelo a reescrever; persistir
+  // solta o envio com registro. Por turno (closure), nunca cross-turno.
+  let internalVocabularyVetoCount = 0;
   const outcomes: ChannelSendResult[] = [];
   // Citações acumuladas por buscas de conhecimento DESTE turno — anexadas à
   // próxima outbound enviada (shape de lib/ai/citations/types, que a UI já lê).
@@ -1218,6 +1230,14 @@ export async function runAgentTurn(
             casesEnabled: agentConfig?.casesEnabled ?? false,
             hasOpenCase,
             openedCaseThisTurn,
+            // A rede contra vazamento de vocabulário interno arma AQUI e só aqui: este é
+            // o único corpo escrito pelo MODELO, e o único caminho em que o veto vira
+            // erro instrutivo que ele pode consertar no turno seguinte. O `send_template`
+            // (mais acima) fica desarmado de propósito — o texto lá é do humano e já
+            // aprovado pela Meta; vetá-lo devolveria ao modelo a culpa por uma frase que
+            // não é dele, e a única saída seria o silêncio. O follow-up determinístico
+            // idem (ver GateContext.internalVocabularyEnforced).
+            enforceInternalVocabulary: true,
             ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
             // Gate 5 (F4-02): classificador semântico roteado pelo MESMO seam agnóstico (budget
             // da org checado nele). Closure com tenant/lead/job da ROW fechados — nunca do payload.
@@ -1277,6 +1297,36 @@ export async function runAgentTurn(
             // (raro) — pode reaplicar 1 espera de pacing; aceitável pelo caminho ser
             // excepcional.
             chain = await runBeforeSend({ ...beforeSendArgs, hasOpenCase: true, openedCaseThisTurn: true });
+          }
+          if (chain.status === 'vetoed' && chain.code === 'internal_vocabulary_leak') {
+            // Fail-safe do gate de vazamento — O CLIENTE NUNCA FICA SEM RESPOSTA.
+            //
+            // Este gate é REDE, não invariante sagrada (ao contrário do case_promise, cuja
+            // 2ª camada ABRE o caso antes de liberar). Aqui não há o que o sistema possa
+            // fazer no lugar do modelo: ou ele reescreve, ou a escolha é entre uma frase
+            // com um termo técnico e o silêncio. Silêncio é pior — some com o atendimento
+            // sem sintoma, que é o oposto do invariante 4 do sistema vivo. Então: 1º veto
+            // ensina (o modelo re-tenta); persistiu, o envio sai DESARMANDO só este gate —
+            // todos os outros continuam valendo, porque o re-run passa pela cadeia inteira.
+            //
+            // O veto da 1ª tentativa já virou linha em `before_send_traces` (com a
+            // categoria do vazamento) e atividade na timeline: a liberação não apaga a
+            // medição, que é o produto deste gate.
+            internalVocabularyVetoCount += 1;
+            if (internalVocabularyVetoCount < MAX_VETOS_DE_VOCABULARIO_INTERNO) {
+              return { ok: false, error: { code: chain.code, message: chain.message } };
+            }
+            runLog.warn('fail-safe do gate de vocabulário interno: envio liberado após vetos seguidos', {
+              vetos: internalVocabularyVetoCount,
+            });
+            // `openedCaseThisTurn` vai pelo valor VIVO (o fail-safe de casos acima pode
+            // tê-lo mudado); reusar o do objeto capturado re-vetaria no case_promise.
+            chain = await runBeforeSend({
+              ...beforeSendArgs,
+              openedCaseThisTurn,
+              hasOpenCase: hasOpenCase || openedCaseThisTurn,
+              enforceInternalVocabulary: false,
+            });
           }
           if (chain.status === 'vetoed') {
             // Erro de ENSINO pt-br (mesmo shape de get_lead_context/breaker): o

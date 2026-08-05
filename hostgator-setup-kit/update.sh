@@ -164,6 +164,12 @@ set_env_var .env APP_IMAGE "$APP_IMAGE"
 # o certo.
 set_env_var .env APP_PULL_POLICY always
 dc pull
+# A rede do proxy externo é declarada como EXTERNA no compose: se ela sumiu
+# (um `docker network prune`, ou o `down -v` que o próprio kit ensina como
+# caminho de recomeço), o `up -d` abaixo morre em "network X declared as
+# external, but could not be found" — e este script roda sozinho pelo agent.sh,
+# então ninguém está lendo a tela para decifrar isso. Mesma função do install.sh.
+garantir_rede_do_proxy
 dc up -d
 
 # O Caddyfile entra no container por bind mount de UM ARQUIVO, e bind mount de

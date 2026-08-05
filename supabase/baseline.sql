@@ -5371,7 +5371,7 @@ end$$;
 
 
 -- ---- trigger de leads sem duplicatas de evento (migration 0043) ----
--- Idempotente (create or replace + drop/create trigger). Ver migrations/20260718160000_0043.
+-- Idempotente (create or replace + drop/create trigger). Ver migrations/20260718160001_0043.
 create or replace function public.fn_emit_event_on_lead_change() returns trigger
     language plpgsql
     set search_path to 'public', 'pg_temp'
@@ -6560,13 +6560,10 @@ revoke all on function fn_publish_followup_flow_version(uuid, uuid, jsonb, uuid)
 
 -- ---- agent_inbox_items: kind 'followup_dead' (migration 0057) ----
 
-alter table agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (kind in
-    ('qr_rescan','job_dead','event_dead','budget_exceeded','handoff',
-     'promotion_review','judge_unaligned','followup_dead','other'));
+-- A constraint NÃO é reconstruída aqui: o vocabulário desta migration já está
+-- contido no bloco único do fim deste apêndice. Reconstruí-la com a lista da
+-- época quebrava o update.sh de quem já tem linha com kind mais novo (era o
+-- caso deste bloco: 'snooze_expired' e os 4 seguintes ainda não existiam).
 
 -- ---- agent editor: seletor de fluxo de follow-up (migration 0061) ----
 
@@ -6708,10 +6705,8 @@ alter table conversations
 create index if not exists idx_conversations_snooze_until
   on conversations (snooze_until) where snooze_until is not null;
 
-alter table agent_inbox_items drop constraint if exists agent_inbox_items_kind_check;
-alter table agent_inbox_items add constraint agent_inbox_items_kind_check
-  check (kind in ('qr_rescan','job_dead','event_dead','budget_exceeded','handoff',
-                  'promotion_review','judge_unaligned','snooze_expired','other'));
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". 'snooze_expired' está lá.)
 
 -- ---- notas internas de conversa (migration 0063) ----
 create table if not exists conversation_notes (
@@ -6821,13 +6816,9 @@ alter table cron_jobs add constraint cron_jobs_job_kind_check
 
 -- ---- agent_inbox_items: reconcilia kind check followup_dead+snooze_expired (migration 0065) ----
 
-alter table agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (kind in
-    ('qr_rescan','job_dead','event_dead','budget_exceeded','handoff',
-     'promotion_review','judge_unaligned','followup_dead','snooze_expired','other'));
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". Os dois valores desta migration
+--  estão lá.)
 -- ---- memória geral da org: org_memory_versions/pointers/entries (migration 0067) ----
 -- 0067: Memória Geral da Org (Fase 1 do épico harness — spec 2026-07-23).
 -- Doc-mãe versionado (padrão versões-imutáveis+ponteiro do playbook 0004/0050)
@@ -7389,12 +7380,9 @@ update public.crm_lead_activities
 
 alter table public.crm_lead_activities
   drop constraint if exists crm_lead_activities_ai_needs_evidence;
-alter table public.crm_lead_activities
-  add constraint crm_lead_activities_ai_needs_evidence check (
-    actor_kind <> 'ai'
-    or coalesce(jsonb_array_length(evidence->'run_ids'), 0) > 0
-    or coalesce(jsonb_array_length(evidence->'trace_ids'), 0) > 0
-  );
+-- A constraint NÃO é recriada aqui, e sim uma vez só mais abaixo, na versão que
+-- também aceita `llm_call_ids`. Recriá-la com a lista da época derrubava o
+-- update.sh de quem já tem atividade de IA cuja evidência é só `llm_call_ids`.
 
 -- Timeline por ator (o dossiê filtra "só o que a IA fez"), parcial porque a
 -- maioria das linhas não é de agente.
@@ -7481,27 +7469,8 @@ comment on column public.lead_state.next_action_seq is
 -- (sem esse valor) enquanto lib/followup/engine.ts insere exatamente esse kind.
 -- Reconstruir a partir do banco apagaria o valor e mataria, em silêncio, o
 -- aviso de enrollment morto. A fonte de verdade é o arquivo versionado.
-alter table public.agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table public.agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (
-    kind = any (
-      array[
-        'qr_rescan',
-        'job_dead',
-        'event_dead',
-        'budget_exceeded',
-        'handoff',
-        'promotion_review',
-        'judge_unaligned',
-        'followup_dead',
-        'snooze_expired',
-        'next_action_ambiguous',
-        'other'
-      ]::text[]
-    )
-  );
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". 'next_action_ambiguous' está lá.)
 
 -- ---- score de probabilidade com evidência, em tabela própria (migrations 0074+0075) ----
 -- O baseline salta o passo intermediário de propósito: quem instala do zero não
@@ -7884,26 +7853,8 @@ comment on function public.fn_update_last_activity_at() is
 -- CHECK e JÁ FICOU TRÊS VALORES ATRÁS DO BANCO sem nada falhar. Kind novo aqui
 -- = kind novo lá, na mesma mudança. Está sendo feito neste commit.
 
-alter table public.agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table public.agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (
-    kind = any (array[
-      'qr_rescan',
-      'job_dead',
-      'event_dead',
-      'budget_exceeded',
-      'handoff',
-      'promotion_review',
-      'judge_unaligned',
-      'followup_dead',
-      'snooze_expired',
-      'next_action_ambiguous',
-      'risk_backlog_seeded',
-      'other'
-    ]::text[])
-  );
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". 'risk_backlog_seeded' está lá.)
 
 -- ---- detected_at é carimbo do banco (migration 0081) ----
 -- 0081 — `detected_at` deixa de ser dado do cliente e vira CARIMBO do banco
@@ -8102,27 +8053,8 @@ end $$;
 -- e agora o invariante `vocabulario-banco-x-typescript` LÊ o arquivo de
 -- verdade, então esquecer não passa mais em silêncio.
 
-alter table public.agent_inbox_items
-  drop constraint if exists agent_inbox_items_kind_check;
-
-alter table public.agent_inbox_items
-  add constraint agent_inbox_items_kind_check check (
-    kind = any (array[
-      'qr_rescan',
-      'job_dead',
-      'event_dead',
-      'budget_exceeded',
-      'handoff',
-      'promotion_review',
-      'judge_unaligned',
-      'followup_dead',
-      'snooze_expired',
-      'next_action_ambiguous',
-      'risk_backlog_seeded',
-      'reactivation_expired',
-      'other'
-    ]::text[])
-  );
+-- (constraint agent_inbox_items_kind_check: definida uma vez só, no fim deste
+--  apêndice — ver "vocabulário completo". 'reactivation_expired' está lá.)
 
 -- ---- agent_stage_hint (migration 0084) ----
 -- 0084 — o funil do AGENTE aprende a falar o vocabulário do TENANT
@@ -9067,7 +8999,122 @@ alter table public.agent_inbox_items
     'risk_backlog_seeded',
     'reactivation_expired',
     'capabilities_missing',
+    -- (migration 0109, issue #129) Mensagem outbound nasce `sending` e, quando o
+    -- envio nunca acontece, fica `sending` para sempre — o self-hoster vê uma
+    -- mensagem eternamente "enviando", sinal de progresso para algo que não vai
+    -- acontecer. O cron `recover-stuck-messages` marca `failed` e usa este kind
+    -- para o defeito APARECER na Central de avisos.
+    --
+    -- Entra NESTA lista, e não num bloco novo no fim do arquivo: o #159 do @jmpo
+    -- mostrou que reconstruir a mesma constraint em N blocos quebra o
+    -- `update.sh` de todo clone que já tenha uma linha de vocabulário posterior
+    -- — os blocos antigos rodam antes e falham em cadeia. Um bloco por
+    -- constraint, vigiado por tests/unit/baseline-constraint-reconstruida.test.ts.
+    'message_send_stuck',
     'other'
   ));
+
+notify pgrst, 'reload schema';
+
+-- ---- channel_sessions.archived_at (migration 0106) ----
+-- Arquivar em vez de apagar: conversations/messages referenciam
+-- channel_sessions com ON DELETE RESTRICT, então canal com histórico não pode
+-- ser removido — some da UI e a linha fica como âncora das FKs.
+alter table public.channel_sessions
+  add column if not exists archived_at timestamptz;
+
+create index if not exists channel_sessions_org_active_idx
+  on public.channel_sessions (organization_id, created_at)
+  where archived_at is null;
+
+notify pgrst, 'reload schema';
+
+-- ---- número único só entre canais ATIVOS (migration 0107) ----
+-- A trava `channel_sessions_phone_per_org_unique` é do snapshot e não sabe o que
+-- é arquivamento: a linha arquivada seguia ocupando o par (org, número), e
+-- reparear o MESMO número estourava 23505 na linha nova. O invariante real é "um
+-- número vive em UM canal ATIVO" — vira índice parcial `where archived_at is
+-- null`, com o MESMO NOME (o invariante do repo cobra o nome dentro da mensagem
+-- de erro). Perde o DEFERRABLE: medido, nenhum caminho escreve
+-- channel_sessions.phone_number com violação transitória.
+--
+-- Auto-curativo: a constraint antiga é ESTRITAMENTE mais forte que o índice novo
+-- (todas as linhas vs. um subconjunto), então nenhum banco que a satisfazia pode
+-- violar o índice — não há dado a deduplicar antes de criá-lo.
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.channel_sessions'::regclass
+       and conname = 'channel_sessions_phone_per_org_unique'
+  ) then
+    alter table public.channel_sessions
+      drop constraint channel_sessions_phone_per_org_unique;
+  end if;
+end $$;
+
+create unique index if not exists channel_sessions_phone_per_org_unique
+  on public.channel_sessions (organization_id, phone_number)
+  where archived_at is null;
+
+-- ---- SECURITY DEFINER exposta a anon/authenticated (migration 0108) ----
+-- Issue #128. O `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON FUNCTIONS TO anon`
+-- (e a irmã TO authenticated) lá em cima vale para toda função criada DEPOIS
+-- dele — isto é, para TODO apêndice deste arquivo, que sempre nasce no fim — e
+-- concede grant DIRETO, que `revoke all ... from public` não remove. Copiar as
+-- duas linhas padrão de uma função antiga produz função exposta.
+--
+-- Medido com o baseline da main aplicado: das 25 `security definer` de public,
+-- 8 tinham EXECUTE para anon — incluindo `fn_publish_ai_agent_version`, que
+-- ESCREVE e recebe o org por argumento sem checar membership.
+--
+-- REGRA (vigiada por tests/invariants/hardening-definer-varredura.test.ts):
+--   anon          → nenhuma definer de public executável, sem exceção;
+--   authenticated → definer VOLÁTIL só continua executável com call site de
+--                   sessão de usuário (emit_event, fn_conversation_assign,
+--                   fn_log_event). As demais só são chamadas pelo client de
+--                   service role, e o grant era escrita cross-tenant à toa.
+-- Idempotente e auto-curativo: revoke de privilégio ausente é no-op.
+
+-- ---- anon: nenhuma SECURITY DEFINER de public ----
+-- Duas origens de EXECUTE, e cada uma pede um revoke diferente — medir o ACL
+-- real (`proacl`) foi o que mostrou isso: `{=X/postgres,...}` é grant a PUBLIC,
+-- que `revoke ... from anon` NÃO remove. As duas linhas juntas cobrem os dois
+-- caminhos, e o re-grant explícito devolve quem de fato precisa.
+revoke execute on function public.fn_is_platform_admin() from public, anon;
+revoke execute on function public.fn_user_org_ids() from public, anon;
+revoke execute on function public.fn_user_role_in_org(uuid) from public, anon;
+revoke execute on function public.fn_user_role_in(uuid) from public, anon;
+revoke execute on function public.fn_role_at_least(uuid, text) from public, anon;
+revoke execute on function public.fn_publish_ai_agent_version(uuid, uuid, uuid) from public, anon;
+revoke execute on function public.fn_emit_conversation_routing() from public, anon;
+revoke execute on function public.rls_auto_enable() from public, anon;
+
+-- ---- authenticated: definer volátil sem call site de sessão de usuário ----
+revoke execute on function public.fn_upsert_wa_contact(uuid, text, text, text, text, text) from authenticated;
+revoke execute on function public.fn_upsert_wa_conversation(uuid, uuid, uuid) from authenticated;
+revoke execute on function public.fn_mark_conversation_message(uuid, text, text, timestamptz) from authenticated;
+revoke execute on function public.fn_publish_ai_agent_version(uuid, uuid, uuid) from authenticated;
+revoke execute on function public.activate_kb_version(uuid, uuid) from authenticated;
+-- Funções de TRIGGER: ninguém as chama por RPC, e o disparo do trigger não
+-- consulta EXECUTE. O grant só existia por herança dos padrões do Postgres.
+revoke execute on function public.fn_emit_conversation_routing() from authenticated;
+revoke execute on function public.rls_auto_enable() from authenticated;
+
+-- ---- re-grant explícito: quem precisa continua podendo (probe positivo) ----
+grant execute on function public.fn_upsert_wa_contact(uuid, text, text, text, text, text) to service_role;
+grant execute on function public.fn_upsert_wa_conversation(uuid, uuid, uuid) to service_role;
+grant execute on function public.fn_mark_conversation_message(uuid, text, text, timestamptz) to service_role;
+grant execute on function public.fn_publish_ai_agent_version(uuid, uuid, uuid) to service_role;
+grant execute on function public.activate_kb_version(uuid, uuid) to service_role;
+grant execute on function public.fn_emit_conversation_routing() to service_role;
+grant execute on function public.rls_auto_enable() to service_role;
+-- Helpers de RLS: as policies são avaliadas com o papel de quem consulta, então
+-- `authenticated` PRECISA de EXECUTE — sem isto toda leitura logada quebra.
+grant execute on function public.fn_is_platform_admin() to authenticated, service_role;
+grant execute on function public.fn_user_org_ids() to authenticated, service_role;
+grant execute on function public.fn_user_role_in_org(uuid) to authenticated, service_role;
+grant execute on function public.fn_user_role_in(uuid) to authenticated, service_role;
+grant execute on function public.fn_role_at_least(uuid, text) to authenticated, service_role;
 
 notify pgrst, 'reload schema';

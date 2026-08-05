@@ -50,17 +50,18 @@ import {
 } from "../_actions";
 
 import { versionCreateSchema, agentMcpCreateSchema } from "@/lib/ai/agents/validation";
+import type { SelectableChannel as ChannelSessionLite } from "@/lib/channels/selectable";
 import type { AgentRow } from "@/hooks/ai/useAgent";
 import type { AgentVersionRow } from "@/hooks/ai/useAgentVersions";
 import type { CredentialRow, Provider } from "@/hooks/ai/useCredentials";
 import { credentialStatus } from "@/hooks/ai/useCredentials";
 
-export interface ChannelSessionLite {
-  id: string;
-  display_name: string;
-  status: string;
-  phone_number: string | null;
-}
+/**
+ * O canal oferecido no seletor é exatamente o que `listSelectableChannels`
+ * devolve — alias, e não uma cópia da forma, para que a tela não possa divergir
+ * de quem monta a lista (é lá que mora o filtro de canal arquivado).
+ */
+export type { ChannelSessionLite };
 
 interface BaseProps {
   credentials: CredentialRow[];

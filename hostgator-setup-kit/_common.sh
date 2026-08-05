@@ -34,6 +34,97 @@ dc_files() {
   fi
 }
 
+# ── A rede externa por onde o proxy de fora alcança o app ────────────────────
+# O nome que o docker compose dá ao projeto quando ninguém passa -p: basename do
+# diretório, minúsculo, só [a-z0-9_-] — E com os `_`/`-` do INÍCIO aparados
+# (NormalizeProjectName faz TrimLeft). Sem essa aparada, uma pasta como
+# `/root/_deskcomm` faz o kit calcular `_deskcomm` enquanto os contêineres
+# carregam `deskcomm`: a instalação deixa de se reconhecer e passa a se tratar
+# como intrusa. Medido contra o docker compose v2.38.2 em `_deskcomm`,
+# `-deskcomm`, `_-_crm` e `_123` — todos divergiam.
+nome_do_projeto_compose() {  # nome_do_projeto_compose <diretório>
+  local n
+  n="$(basename "$1" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
+  printf '%s' "${n#"${n%%[!_-]*}"}"
+}
+
+nome_do_projeto_atual() {
+  printf '%s' "${COMPOSE_PROJECT_NAME:-$(nome_do_projeto_compose "${PROJECT_DIR:-$PWD}")}"
+}
+
+# A bridge que ESTE projeto reserva para o proxy externo. Um `basename` cru
+# diverge numa pasta com maiúscula, ponto ou underscore inicial — e aí o kit
+# cria uma rede e o compose procura outra.
+rede_reservada_do_proxy() { printf '%s_proxy' "$(nome_do_projeto_atual)"; }
+
+# O compose declara TRAEFIK_NETWORK como rede EXTERNA, e rede externa que não
+# existe é recusada ANTES de o compose criar qualquer coisa — medido com o
+# compose v2.38.2: `up -d` morre em "network X declared as external, but could
+# not be found", sem dizer de onde saiu o nome. Descobrir isso aqui, com o nome na
+# mão, é dezenas de minutos de diferença para quem está instalando. Valor escrito
+# à mão no .env passa pelo mesmo crivo: erra tão fácil quanto a detecção.
+#
+# A rede que o instalador reserva para si é o caso em que não existir é NORMAL —
+# instalação nova, ou alguém que rodou `docker network prune`. Aí a resposta é
+# criar, não morrer: o nome é nosso e sabemos a forma dele.
+# Ecoa: ok | criar | inexistente | driver_errado
+veredito_rede_do_proxy() {  # veredito_rede_do_proxy <driver encontrado> <rede> <bridge do projeto>
+  local drv="${1:-}" rede="${2:-}" nossa="${3:-}"
+  if [ -z "$drv" ]; then
+    [ -n "$nossa" ] && [ "$rede" = "$nossa" ] && { printf 'criar'; return 0; }
+    printf 'inexistente'; return 0
+  fi
+  [ "$drv" = bridge ] && { printf 'ok'; return 0; }
+  printf 'driver_errado'
+}
+
+# Aplica o veredito acima: confere no Docker, cria a nossa quando falta, morre
+# explicando quando é de outro. Mora aqui — e não no install.sh — porque o
+# `dc up -d` do update.sh corre exatamente o mesmo risco: a bridge é um artefato
+# como qualquer outro e some num `docker network prune`, ou no `down -v` que o
+# próprio kit ensina como caminho de recomeço. Sem esta checagem a atualização
+# morre com a mesma mensagem opaca do compose, e pior: o agent.sh roda o
+# update.sh sozinho a cada 5 minutos, então ninguém está olhando a tela.
+# Define TRAEFIK_NETWORK quando ela vem vazia — de propósito, é o mesmo default
+# que o instalador grava no .env.
+garantir_rede_do_proxy() {
+  [ "${REVERSE_PROXY:-caddy}" = "traefik" ] || return 0
+  local nossa drv erro
+  nossa="$(rede_reservada_do_proxy)"
+  TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-traefik}"
+  drv="$(docker network inspect -f '{{.Driver}}' "$TRAEFIK_NETWORK" 2>/dev/null || true)"
+  case "$(veredito_rede_do_proxy "$drv" "$TRAEFIK_NETWORK" "$nossa")" in
+  ok) : ;;
+  criar)
+    # O motivo vai junto porque aqui NÃO se sabe qual é: o comando está certo, e
+    # quem recusou foi o Docker (falta de faixa de IP livre numa VPS com muitas
+    # stacks é um caso conhecido). Sem repassar a resposta dele, a mensagem
+    # mandaria repetir à mão o comando que acabou de falhar.
+    if ! erro="$(docker network create "$TRAEFIK_NETWORK" 2>&1 >/dev/null)"; then
+      die "Não consegui criar a rede Docker '$TRAEFIK_NETWORK'. O Docker respondeu:
+  ${erro}"
+    fi
+    c_dim "  (rede '$TRAEFIK_NETWORK' criada — é por ela que o Traefik alcança o CRM)"
+    ;;
+  inexistente)
+    die "A rede Docker '$TRAEFIK_NETWORK' não existe.
+Rode 'docker network ls', identifique a rede do seu Traefik e ponha
+TRAEFIK_NETWORK=<nome> no .env antes de tentar de novo."
+    ;;
+  driver_errado)
+    # Mandar quem está em modo host "procurar a rede do seu Traefik" é mandar
+    # procurar o que não existe: em modo host ele não está em rede nenhuma do
+    # Docker. Para esse caso a saída é apagar a linha e deixar o kit decidir —
+    # ele cria a bridge do projeto sozinho.
+    die "A rede '$TRAEFIK_NETWORK' tem driver '$drv', e o app precisa
+de uma bridge para o Traefik alcançar o contêiner. Se o seu Traefik roda em modo
+host (é o caso quando 'docker ps' não mostra porta publicada nele), APAGUE a linha
+TRAEFIK_NETWORK do .env: o kit cria e usa a rede '$nossa'.
+Senão, rode 'docker network ls' e ponha a bridge certa em TRAEFIK_NETWORK no .env."
+    ;;
+  esac
+}
+
 # Cor só quando há terminal de verdade — mesma regra do install.sh (se mexer
 # numa, mexa na outra). Aqui isso vale dobrado: o update.sh, que herda estas
 # funções, é rodado pelo agent.sh com a saída redirecionada para arquivo
@@ -49,6 +140,7 @@ paint() { local code="$1"; shift; if [ "$COLOR" = 1 ]; then printf '\033[%sm%s\0
 c_red() { paint 31 "$*"; }
 c_grn() { paint 32 "$*"; }
 c_ylw() { paint 33 "$*"; }
+c_dim() { paint 2  "$*"; }
 die()   { c_red "✖ $*"; exit 1; }
 step()  { printf '\n'; paint 1 "▶ $*"; }
 
