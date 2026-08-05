@@ -762,11 +762,22 @@ novo e sem contradizer. E **sem chamar nenhuma tool para isso**: o contexto cheg
 pelo checkpoint, que é exatamente o desenho. Estado final da conversa medido:
 `force_human=false · silêncio=null · assignee_kind=ai · status=ai_handling`.
 
-### ACH-03 — a capacidade existe, está ligada, e o agente não a usa
+### ACH-03 — se a capacidade é usada DEPENDE DO MODELO
 
-Em **2 turnos reais, zero das 6 capacidades novas foram chamadas** (medido em
-`api_audit_log`, filtrando por `actor_id` do meu agente — a org é compartilhada
-com outras waves, então o filtro é obrigatório).
+> ⚠️ **Este título foi corrigido.** Ele dizia *"a capacidade existe, está ligada,
+> e o agente não a usa"* — uma afirmação sobre o DESENHO, medida em **um** modelo.
+> A segunda rodada, em `gpt-5.6-terra`, mostrou o agente **chamando** as
+> capacidades (`crm_get_contact`, `crm_get_human_case` 2×). A superfície é
+> usável; o que varia é o modelo.
+>
+> A frase antiga tinha aparência de medição e carregava uma conclusão errada
+> sobre a própria entrega. Fica registrada aqui em vez de apagada: quem lê um
+> achado precisa saber que ele foi revisado, e por quê.
+
+Em **2 turnos reais com `gpt-4o`, zero das 6 capacidades novas foram chamadas**
+(medido em `api_audit_log`, filtrando por `actor_id` do meu agente — a org é
+compartilhada com outras waves, então o filtro é obrigatório). Com
+`gpt-5.6-terra`, no mesmo cenário, foram chamadas — ver a segunda rodada acima.
 
 Para as de leitura isso é **bom sinal**: o contexto já chegava pronto, o agente
 não precisou gastar turno perguntando. Mas `crm_list_available_attendants` era
@@ -782,6 +793,13 @@ incluída. O modelo tinha a capacidade na mão e não a escolheu.
 (`open_human_case`), que não pede nem sugere a checagem. A minha capacidade vive
 numa lista paralela e depende de o modelo lembrar — e a doutrina é explícita
 contra confiar na disciplina do modelo para o que o sistema pode garantir.
+
+**O conserto continua certo, e por um motivo MELHOR do que o que eu escrevi
+primeiro.** Não é "o modelo não usa a capacidade": é que **se usa ou não depende
+de qual modelo está configurado**, e isso é knob do cliente, não nosso. Uma
+promessa ao cliente não pode variar com a escolha de modelo no seletor. Por isso a
+expectativa passou a vir do sistema — e por isso ela vale igual no `gpt-4o`, que
+não consultaria, e no `gpt-5.6-terra`, que consultaria.
 
 ### ACH-03 — CONSERTADO, e provado com o mesmo modelo real
 
