@@ -9176,4 +9176,24 @@ comment on column ai_agent_versions.operator_enabled is
 comment on column ai_agent_versions.operator_model is
   'Modelo do papel Operador. NULL = herda o modelo do agente.';
 
+-- ---- ai_invocations.agent_id aceita NULL (migration 0113) ----
+-- Issue #160 (@jmpo, medindo a própria VPS): o classificador de sentimento roda
+-- mesmo sem agente ativo — lê o agente só para o threshold e cai no default —
+-- mas auditava com `agent_id: agent?.id ?? ""` numa coluna `uuid NOT NULL`. O
+-- insert é fire-and-forget, então o erro só aparecia como `warn` no log do
+-- contêiner: `ai_invocations` ficava VAZIA numa instalação com tráfego real, e
+-- as telas de consumo e custo de IA (que leem dela) mostravam zero enquanto o
+-- provider era pago. "Sem agente ativo" é o estado normal de quem ainda não
+-- publicou o agente.
+-- Idempotente: `drop not null` em coluna que já aceita null é no-op.
+
+alter table public.ai_invocations
+  alter column agent_id drop not null;
+
+comment on column public.ai_invocations.agent_id is
+  'Agente que originou a invocação. NULL = invocação de IA sem agente dono '
+  '(ex.: classificador de sentimento numa org sem agente publicado). O custo '
+  'existe e precisa aparecer nas telas de consumo — ver issue #160.';
+
+
 notify pgrst, 'reload schema';
