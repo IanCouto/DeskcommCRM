@@ -104,4 +104,10 @@ export {
   Signpost,
   // atualização de versão
   ArrowCircleUp,
+  // navegação agrupada (registro em lib/navigation/registry.ts)
+  Funnel,
+  BookOpen,
+  Key,
+  UserCircle,
+  ClockCounterClockwise,
 } from "@phosphor-icons/react/dist/ssr";

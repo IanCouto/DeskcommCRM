@@ -65,6 +65,7 @@ Living System Checklist — <nome da feature>
 [ ] Quem eu alimento?  (aresta de saída — a peça é um polvo, distribui)
 [ ] Que atividade/log eu emito?  (event_log / audit / crm_lead_activities)
 [ ] Onde eu apareço na tela?  (timeline/insight — não só no banco)
+[ ] Por qual porta se chega até mim?  (entrada em lib/navigation/registry.ts, ou allowlist justificada)
 [ ] Qual meu mecanismo anti-morte?  (próximo passo garantido, ou N/A justificado)
 [ ] Onde se CONFIGURA o que eu uso?  (tela de ver + tela de mudar; e o que aparece se faltar)
 [ ] Qual a continuidade IA↔humano?  (payload de handoff nas duas direções, se aplicável)
@@ -72,6 +73,16 @@ Living System Checklist — <nome da feature>
 ```
 
 Uma feature que responde "nenhum" a *quem eu alimento* ou *onde apareço na tela* é uma ilha. Desilhe antes do merge, ou registre explicitamente por que é uma exceção legítima.
+
+> **Por que a pergunta da porta foi acrescentada (2026-08-03).** Ter tela e ser alcançável são coisas diferentes, e o checklist só cobrava a primeira. Auditoria da navegação encontrou **sete telas alcançáveis apenas por dentro da própria seção** (Conhecimento, Credenciais, Uso, Casos, Alertas — só como aba dentro de `/app/ai/*`) e **duas sem link nenhum no app** (`/app/integrations/nuvemshop`, `/app/ai/proposals`). Todas tinham passado no gate respondendo "tenho tela". Uma feature sem porta é uma ilha alcançável só por quem já sabe a URL — que é ninguém, num produto self-host.
+
+### Regras de navegação que a doutrina passa a exigir
+
+- **Todo destino declara seu grupo** em `lib/navigation/registry.ts`. Sem grupo, sem merge.
+- **Configuração e observabilidade são grupos diferentes.** Desenhar como o sistema funciona (Agentes, Roteadores) não é a mesma atividade que olhar o sistema funcionando (Evolução da IA, Desempenho) — e quem procura uma não está procurando a outra.
+- **Hub a partir de 5 telas.** Abaixo disso o grupo cabe inteiro no sidebar; um hub de 3 itens é só um clique a mais para chegar onde já dava.
+- **O sidebar carrega o uso diário; o hub carrega o inventário.** Na dúvida, `sidebar: false` — o hub e o ⌘K já garantem a descoberta.
+- **Mudar o lugar na navegação não exige mudar a URL.** Rota só se renomeia quando o path mente sobre o conteúdo, e cada renomeação paga um redirect permanente.
 
 ---
 
@@ -96,7 +107,7 @@ Primeira passada ancorada no grafo (`graphify`) + `docs/architecture/`. A doutri
 - Atendentes com status/carga/capacidade/horário/disponibilidade + **Performance por Atendente** (ganhos, perdidos, conversas, 1ª resposta média).
 - **IA como assignee de 1ª classe** (`assignee_kind user|ai`) + Modo de Roteamento — handoff IA→humano existe.
 - Flywheel de auto-aprimoramento com gate humano; `createFollowupTurnHandler` (follow-up conduzido pelo agente).
-- 7 gates before-send com veto instrutivo de volta ao modelo (continuidade IA→modelo).
+- 10 gates before-send com veto instrutivo de volta ao modelo (continuidade IA→modelo). *(Este número já dizia "7" quando a cadeia tinha 9 — corrigido junto com a entrada do gate `internal_vocabulary`, que a levou a 10. A lista viva é `BEFORE_SEND_GATES`, travada por `tests/unit/before-send-chain-shape.test.ts`.)*
 
 **Verificado em código (2026-07-24):**
 1. ✅ **Timeline de `crm_lead_activities` renderizada** — VIVO. `components/inbox/CRMSidePanel.tsx` busca `crm_lead_activities` e renderiza como feed no inbox (API `app/api/v1/contacts/[id]/timeline/route.ts`). *Nuance:* o feed vive no inbox, não no card do pipeline — desilhar o card seria o próximo passo se o operador trabalhar direto do Kanban. (invariante 3)
@@ -115,5 +126,10 @@ Primeira passada ancorada no grafo (`graphify`) + `docs/architecture/`. A doutri
 | Gate de sessão | Item "Living System Checklist" no DoD (`CLAUDE.md`) | Nenhuma task fecha sem responder o checklist |
 | Contexto persistente | Memória de projeto | Sessões futuras carregam a doutrina |
 | Mapa vivo | archify + graphify | Peça nova aparece com ≥2 arestas |
+| **CI (mecânico)** | `tests/unit/navegacao-completude.test.ts` | **Tela sem porta reprova o build** |
 
 **Rung futuro (opcional, não construído):** enforcement mecânico via CI/hook — ex.: teste que exige que toda tabela tenant-aware nova declare sua estratégia de activity log. Gates de *mentalidade* vivem melhor em skill+DoD (hábito) do que em hook frágil (ruído). Adicionar só se a doutrina começar a vazar na prática.
+
+**Acionado em 2026-08-03 — para a pergunta da porta.** A condição acima ("se a doutrina começar a vazar na prática") se cumpriu: nove telas sem porta, todas aprovadas por um gate de hábito. `navegacao-completude.test.ts` varre `app/app/**/page.tsx` e cruza com o registro nos dois sentidos — tela sem porta e destino apontando para rota inexistente. A allowlist exige justificativa escrita por entrada, e um teste cobra que a justificativa exista.
+
+O caso é instrutivo sobre o limite do gate de hábito: **o próprio teste achou duas telas órfãs que três varreduras manuais nesta sessão não acharam** — incluindo uma (`/app/ai/proposals`) que eu havia declarado, com convicção, não ser uma tela. A varredura por arquivo não tem opinião. Onde a propriedade a garantir é *enumerável a partir do repositório*, o teste ganha do hábito; onde ela exige julgamento (a peça faz sentido? o log é útil?), o hábito continua sendo o instrumento certo.

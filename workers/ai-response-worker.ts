@@ -14,7 +14,7 @@
  * `row.organization_id` (from the trusted event_log row, not user input).
  */
 
-import { generateText } from "ai";
+import { generateText, type LanguageModel } from "ai";
 
 import {
   DEFAULT_BOT_MODEL,
@@ -22,6 +22,7 @@ import {
   gatewayHeaders,
   isAiGatewayConfigured,
   isEmbeddingProviderConfigured,
+  resolveLanguageModel,
 } from "@/lib/ai/gateway";
 import { embedText } from "@/lib/ai/embed";
 import { computeCost } from "@/lib/ai/cost";
@@ -127,8 +128,35 @@ export async function processMessageReceived(row: EventRow): Promise<ProcessResu
     return { status: "skipped", reason: "handoff_g4_stage" };
   }
 
+  // Mesma armadilha que quebrava o ai-sentiment-worker, e aqui ela é mais cara:
+  // este é o worker que RESPONDE O CLIENTE. `ctx.agent.model` é uma string vinda
+  // do banco (ai_agents.model), e no AI SDK string com barra é roteada pelo
+  // gateway da Vercel — que sem AI_GATEWAY_API_KEY aborta ANTES de emitir
+  // qualquer requisição ("Unauthenticated request to AI Gateway"). Numa
+  // instalação self-host padrão, que só tem ANTHROPIC_API_KEY, isso significava
+  // o bot mudo, uma vez por mensagem recebida.
+  //
+  // O guard fica DEPOIS de G1/G4 de propósito: pedido de humano e menção legal
+  // precisam gerar handoff mesmo numa instalação sem LLM atendível.
+  //
+  // Skip, não erro: modelo que nenhuma chave desta instalação atende é config,
+  // não falha transitória — retentar só repetiria o loop que este PR mata.
+  const model = resolveLanguageModel(ctx.agent.model);
+  if (!model) {
+    logger.warn("[ai-response-worker] modelo do agente sem provider configurado", {
+      organization_id: ctx.organization_id,
+      agent_id: ctx.agent.id,
+      model: ctx.agent.model,
+    });
+    return {
+      status: "skipped",
+      reason: "ai_gateway_key_missing",
+      detail: `nenhuma chave configurada atende o modelo "${ctx.agent.model}"`,
+    };
+  }
+
   try {
-    const response = await invokeBot(ctx);
+    const response = await invokeBot(ctx, model);
     const post = postProcess(response.text);
 
     // ── G3 — bot's own response signals low confidence / uncertainty.
@@ -478,7 +506,10 @@ async function retrieveContext(input: RetrieveInput): Promise<RagHit[]> {
 // 3. invokeBot
 // ---------------------------------------------------------------------------
 
-async function invokeBot(ctx: BotContext): Promise<BotResponse> {
+// `model` chega resolvido de fora (ver o guard em processMessageReceived):
+// `ctx.agent.model` continua sendo a STRING canônica, porque é ela que vai para
+// o custo e para a auditoria em ai_invocations; o que executa é o provider.
+async function invokeBot(ctx: BotContext, model: LanguageModel): Promise<BotResponse> {
   const renderedSystem = renderSystemPrompt(ctx.agent.system_prompt, ctx);
   const cfg = gatewayConfig();
   const headers = cfg ? gatewayHeaders({ organizationId: ctx.organization_id }) : undefined;
@@ -498,7 +529,7 @@ async function invokeBot(ctx: BotContext): Promise<BotResponse> {
 
   const start = Date.now();
   const result = await generateText({
-    model: ctx.agent.model,
+    model,
     system: renderedSystem,
     messages,
     headers,
@@ -572,7 +603,7 @@ async function persistAndDispatch(
     direction: "outbound" as const,
     status: "sending",
     body: finalText,
-    sent_via: "bot" as const,
+    sent_via: "ai" as const,
     sent_at: new Date().toISOString(),
     metadata: {
       ai_generated: true,

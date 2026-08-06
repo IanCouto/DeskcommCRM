@@ -164,6 +164,12 @@ set_env_var .env APP_IMAGE "$APP_IMAGE"
 # o certo.
 set_env_var .env APP_PULL_POLICY always
 dc pull
+# A rede do proxy externo é declarada como EXTERNA no compose: se ela sumiu
+# (um `docker network prune`, ou o `down -v` que o próprio kit ensina como
+# caminho de recomeço), o `up -d` abaixo morre em "network X declared as
+# external, but could not be found" — e este script roda sozinho pelo agent.sh,
+# então ninguém está lendo a tela para decifrar isso. Mesma função do install.sh.
+garantir_rede_do_proxy
 dc up -d
 
 # O Caddyfile entra no container por bind mount de UM ARQUIVO, e bind mount de
@@ -193,13 +199,7 @@ fi
 # ── 6. O app voltou no ar? ───────────────────────────────────────────────────
 step "Conferindo se o app voltou no ar"
 ok=""
-for _ in $(seq 1 20); do
-  out="$(dc exec -T app node -e \
-    "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>r.text()).then(t=>{console.log(t);process.exit(0)}).catch(()=>process.exit(1))" \
-    2>/dev/null || echo '')"
-  printf '%s' "$out" | grep -q '"status":"ok"' && { ok=1; break; }
-  sleep 3
-done
+wait_app_healthy 20 3 >/dev/null && ok=1
 if [ -n "$ok" ]; then
   c_grn "✓ Atualização concluída — app no ar e saudável."
 else
