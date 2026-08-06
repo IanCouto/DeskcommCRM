@@ -29,6 +29,7 @@
  */
 import type pg from 'pg';
 import { z } from 'zod';
+import { auxModelArgs, type AuxModelArgs } from './aux-model-args';
 import type { ChannelAdapter, ChannelSendResult } from '../channel-adapter';
 
 import { withFields, type Logger } from '../obs/logger';
@@ -759,7 +760,13 @@ export async function runAgentTurn(
   // knob de env → modelo do agente PUBLICADO na tela → organizations.settings.llm.
   // Sem isso, self-host que configurou tudo pela tela (que não preenche default_model)
   // morria no primeiro classificador: "modelo LLM não definido".
-  const agentModel = agentConfig?.model;
+  // A regra de ONDE o classificador auxiliar tira modelo + provider + credencial
+  // mora em `aux-model-args.ts`, fora daqui, para poder ser exercitada por unit:
+  // esta função precisa de banco, job e registry para rodar. Ver o defeito que a
+  // originou (PR #151) no cabeçalho de lá.
+  const argsAux = (configuredModel: string | undefined): AuxModelArgs =>
+    auxModelArgs(configuredModel, agentConfig);
+
   const turnContextKnobs =
     agentConfig !== null
       ? { historyLimit: agentConfig.historyMessageWindow, maxTokens: deps.knobs.maxContextTokens }
@@ -866,12 +873,11 @@ export async function runAgentTurn(
       {
         context: openingContext.context,
         previousSummary: previous?.rolling_summary ?? '',
-        knobs: {
-          ...deps.knobs.compaction,
-          ...(deps.knobs.compaction.model === undefined && agentModel !== undefined
-            ? { model: agentModel }
-            : {}),
-        },
+        // A compactação é o QUARTO call site da mesma regra, e o #151 só cobriu
+        // três: ela também pedia o modelo do agente ao provider default da org.
+        // Mesmo 404, mesma morte de turno — só que num caminho que roda quando a
+        // conversa já é longa, ou seja, mais tarde e com menos gente olhando.
+        knobs: { ...deps.knobs.compaction, ...argsAux(deps.knobs.compaction.model) },
         notesIndexMaxTokens: deps.knobs.notesIndexMaxTokens,
       },
       { registry: deps.registry, log: runLog },
@@ -971,9 +977,7 @@ export async function runAgentTurn(
             { tenantId, leadId, jobId: job.id },
             {
               candidate,
-              ...((deps.knobs.promiseSemantic?.model ?? agentModel) !== undefined
-                ? { model: (deps.knobs.promiseSemantic?.model ?? agentModel) as string }
-                : {}),
+              ...argsAux(deps.knobs.promiseSemantic?.model),
             },
             { ...(deps.registry !== undefined ? { registry: deps.registry } : {}), log: runLog },
           )
@@ -1752,9 +1756,7 @@ export async function runAgentTurn(
       {
         context: effectiveContext,
         currentStage,
-        ...((deps.knobs.stageClassifier.model ?? agentModel) !== undefined
-          ? { model: (deps.knobs.stageClassifier.model ?? agentModel) as string }
-          : {}),
+        ...argsAux(deps.knobs.stageClassifier.model),
       },
       { registry: deps.registry, log: runLog },
     );
@@ -1775,9 +1777,7 @@ export async function runAgentTurn(
       { tenantId, leadId, jobId: job.id },
       {
         message: skillSignal,
-        ...((deps.knobs.jailbreak.model ?? agentModel) !== undefined
-          ? { model: (deps.knobs.jailbreak.model ?? agentModel) as string }
-          : {}),
+        ...argsAux(deps.knobs.jailbreak.model),
       },
       { registry: deps.registry, log: runLog },
     );
