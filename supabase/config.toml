@@ -52,6 +52,28 @@ enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
 enable_signup = true # Signup self-service (/signup) — provisiona tenant em /auth/confirm
 
+# Tetos do GoTrue para o AMBIENTE LOCAL/CI. Não é config de produção — lá quem
+# manda é o painel do Supabase Cloud.
+#
+# Por que existe: no CI todas as specs saem de UM IP (o runner), e cada tela que
+# abre faz checagem de sessão. Com a suíte em 37 specs, a soma estourou o teto
+# padrão do GoTrue e o sintoma NÃO aponta para a causa — as telas recebem 429 e
+# a spec que estiver passando na hora é a que falha. Medido em 2026-08-10: a
+# `main` ficou vermelha em `olhar-telas-do-epico` com sete telas de IA acusando
+# "Failed to load resource: 429", e a lista de telas dessa spec não tinha mudado.
+#
+# É o mesmo problema que já forçou `AUTH_RATE_LIMIT_LOGIN_IP` no workflow, com
+# uma diferença que importa: aquele limitador é do processo Next (dividir a
+# suíte em duas invocações zerava o contador), este é do GoTrue, do lado do
+# servidor — dividir não ajuda, só afrouxar aqui.
+[auth.rate_limit]
+# padrão 150/5min por IP; a suíte inteira compartilha um IP só.
+token_refresh = 10000
+# padrão 30/5min por IP.
+sign_in_sign_ups = 10000
+# padrão 30/5min por IP.
+token_verifications = 10000
+
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
