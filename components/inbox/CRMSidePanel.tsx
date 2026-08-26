@@ -154,7 +154,7 @@ function MarcarProximoPasso({ demandaId, onPronto }: { demandaId: string; onPron
         placeholder="O que acontece a seguir?"
         aria-label="Próximo passo desta demanda"
         data-testid="campo-proximo-passo"
-        className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-hidden focus:ring-1 focus:ring-ring"
       />
       <div className="flex gap-1.5">
         <Button

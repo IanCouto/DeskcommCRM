@@ -73,10 +73,10 @@ export default async function NuvemshopIntegrationPage() {
           <CardHeader>
             <CardTitle>Integração não configurada</CardTitle>
             <CardDescription>
-              Configure <code className="rounded bg-muted px-1 py-0.5 text-xs">NUVEMSHOP_APP_ID</code>,{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">NUVEMSHOP_CLIENT_ID</code> e{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">NUVEMSHOP_CLIENT_SECRET</code>{" "}
-              em <code className="rounded bg-muted px-1 py-0.5 text-xs">.env.local</code> para
+              Configure <code className="rounded-md bg-muted px-1 py-0.5 text-xs">NUVEMSHOP_APP_ID</code>,{" "}
+              <code className="rounded-md bg-muted px-1 py-0.5 text-xs">NUVEMSHOP_CLIENT_ID</code> e{" "}
+              <code className="rounded-md bg-muted px-1 py-0.5 text-xs">NUVEMSHOP_CLIENT_SECRET</code>{" "}
+              em <code className="rounded-md bg-muted px-1 py-0.5 text-xs">.env.local</code> para
               ativar a integração.
             </CardDescription>
           </CardHeader>

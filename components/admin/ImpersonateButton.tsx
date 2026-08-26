@@ -98,7 +98,7 @@ export function ImpersonateButton({
             Você está prestes a entrar como o tenant{" "}
             <span className="font-semibold text-foreground">{displayName}</span>.
             Toda ação será registrada com a flag{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            <code className="rounded-md bg-muted px-1 py-0.5 text-xs">
               acting_as_platform_admin
             </code>
             . A sessão expira em 1 hora. Confirma?

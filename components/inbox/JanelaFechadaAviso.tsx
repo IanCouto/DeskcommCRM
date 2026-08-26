@@ -141,7 +141,7 @@ export function JanelaFechadaAviso({
             aria-label="Modelo aprovado"
             className={cn(
               "h-9 min-w-[16rem] flex-1 rounded-md border border-input bg-background px-2 text-sm",
-              "focus:outline-none focus:ring-1 focus:ring-ring",
+              "focus:outline-hidden focus:ring-1 focus:ring-ring",
             )}
           >
             <option value="">Escolha um modelo aprovado…</option>

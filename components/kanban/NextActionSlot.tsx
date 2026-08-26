@@ -50,7 +50,7 @@ export function NextActionSlot({
           // trata — "Aprovar" sozinho, lido fora de contexto, não decide nada.
           aria-label={`Aprovar: ${label}`}
           className={cn(
-            "rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors",
+            "rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors",
             "bg-accent/10 text-accent hover:bg-accent/20",
             "disabled:opacity-50",
           )}
@@ -63,7 +63,7 @@ export function NextActionSlot({
           onClick={(e) => decide(e, "dismiss")}
           aria-label={`Ignorar: ${label}`}
           className={cn(
-            "rounded px-1.5 py-0.5 text-[11px] transition-colors",
+            "rounded-md px-1.5 py-0.5 text-[11px] transition-colors",
             "text-text-muted hover:bg-surface-muted hover:text-text",
             "disabled:opacity-50",
           )}

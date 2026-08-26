@@ -108,7 +108,7 @@ function FichaCapacidade({
     >
       <input
         type="checkbox"
-        className="mt-1 h-4 w-4 shrink-0 rounded border-border accent-primary"
+        className="mt-1 h-4 w-4 shrink-0 rounded-md border-border accent-primary"
         checked={marcada}
         onChange={onToggle}
         disabled={disabled || bloqueada}

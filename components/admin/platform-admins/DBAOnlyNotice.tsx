@@ -15,11 +15,11 @@ export function DBAOnlyNotice() {
         </p>
         <p className="text-sm leading-relaxed text-blue-800">
           Conforme Spec 01 §3.4 T-04: adição, remoção ou alteração de{" "}
-          <code className="rounded bg-blue-100 px-1 font-mono text-xs">
+          <code className="rounded-md bg-blue-100 px-1 font-mono text-xs">
             platform_admins
           </code>{" "}
           é feita exclusivamente via SQL pelo DBA, com nota explicativa em{" "}
-          <code className="rounded bg-blue-100 px-1 font-mono text-xs">
+          <code className="rounded-md bg-blue-100 px-1 font-mono text-xs">
             api_audit_log
           </code>
           . Esta página é informativa e read-only — nenhum botão de modificação

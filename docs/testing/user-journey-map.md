@@ -848,3 +848,39 @@ Toda spec que usa o helper sobe o teto (240 s em quatro delas, 90 s em uma) —
 isso não está escrito em lugar nenhum, e quem adota o helper sem subir o teto vê
 dois testes alheios estourarem sem call log de locator. Se você for adotar o
 helper numa spec nova: `test.describe.configure({ timeout: 120_000 })`.
+
+## A migração para o Tailwind 4 mudou 252 classes que ninguém sabia estarem mortas (2026-08-26)
+
+Origem: subir `tailwindcss` de 3.4 para 4, com o config saindo do
+`tailwind.config.ts` (deletado) para um `@theme inline` em `app/globals.css`.
+
+**O achado que a migração destapou.** No v3, um modificador de opacidade sobre
+cor declarada como `var(--…)` sem o marcador `<alpha-value>` fazia o Tailwind
+**não emitir a regra** — a classe simplesmente não existia no CSS, em silêncio.
+Todo token deste produto é `var(--color-*)`, então **62 classes distintas em 252
+usos** eram letra morta: `bg-destructive/10` num aviso de erro não pintava fundo
+nenhum, `border-destructive/30` caía na cor neutra da regra global de borda,
+`text-muted-foreground/60` herdava a cor do pai. O v4 resolve opacidade por
+`color-mix()`, que funciona com qualquer cor — então **as 252 passaram a pintar
+o que quem escreveu queria desde o começo**.
+
+Medido com o v3 real, e não deduzido: um `tailwindcss@3.4.19` de descarte,
+alimentado com 7 classes, emitiu **4** — nenhuma das 3 com barra.
+
+| caso | prioridade | estado |
+|---|---|---|
+| Tokens resolvem em claro e escuro depois do `@theme inline` | `[P0]` | **PASS**, medido por `getComputedStyle` em `tests/sonda-tailwind-4.ts`: `--color-bg` = `#faf9f6` claro / `#161510` escuro, e `body` acompanha |
+| A auto-referência do `@theme inline` (`--color-bg: var(--color-bg)`) não vence o `:root` autoral | `[P0]` | **PASS.** A teoria é de cascata (sem layer vence layer); a medida é a linha acima. Congelado em `tests/unit/tailwind-tokens.test.ts`, que reprova se alguém embrulhar `:root` num `@layer` |
+| `class="border"` sem cor continua na cor de borda do produto, e não em `currentColor` | `[P0]` | **PASS**: `rgb(231,227,218)` (claro) e `rgb(51,49,42)` (escuro) — os dois são o `--color-border` do tema |
+| As classes de opacidade revividas pintam de verdade | `[P1]` | **PASS parcial**: `bg-muted/40` medido em elemento real do onboarding, com alfa `0.4` nos dois temas. As outras 61 estão no CSS construído, mas **não foram medidas uma a uma na tela** |
+| Onboarding completo (6 passos) em claro e escuro, instalação fresca | `[P0]` | **PASS**, 0 erro de console. Capturas em `evidence/tailwind-4/` |
+| Telas internas (`/app`, kanban, inbox, contatos) | — | **NÃO COBERTO.** Numa instalação fresca todas redirecionam para `/onboarding/welcome`; alcançá-las pede concluir o onboarding, o que pede WAHA e chave de IA. A sonda registra o redirecionamento em vez de fingir cobertura |
+| O efeito visual das 252 revividas foi *revisto por um designer* | — | **NÃO MEDIDO.** A migração provou que passaram a pintar; não provou que cada uma pinta o que a tela precisa. Onde a intenção original estava errada, o erro agora está visível |
+
+**Armadilha que custou duas medições falsas.** Sonda que injeta `<div
+class="p-7">` por JavaScript não mede nada: a classe nunca esteve na fonte, o
+scanner nunca a viu, e o zero medido é artefato da sonda. Pelo mesmo motivo, o
+primeiro elemento com `class="border"` da tela de login é o `<input>`
+autofocado — ele casa `focus-visible:border-accent-500` e devolve a cor do
+foco. A sonda só mede elemento real, e pula elemento em foco e elemento que já
+traga classe de cor própria.

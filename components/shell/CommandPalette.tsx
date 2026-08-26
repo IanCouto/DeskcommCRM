@@ -110,7 +110,7 @@ function Resultados({ aoEscolher }: { aoEscolher: () => void }) {
           onChange={(e) => aoDigitar(e.target.value)}
           onKeyDown={aoTeclar}
           placeholder="Buscar telas do sistema…"
-          className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          className="h-12 w-full bg-transparent text-sm outline-hidden placeholder:text-muted-foreground"
         />
       </div>
 
