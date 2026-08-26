@@ -1,0 +1,62 @@
+# Relógio HTTP — rede de segurança no Vercel Hobby (sem cron */1).
+#
+# O Hobby só agenda 1×/dia. Sem este job, `waiting_reply` (ex.: cap_nome após
+# "SIM") fica preso se o webhook WAHA estourar tempo ou cair num deploy antigo.
+#
+# ⚠️ Schedule do GitHub Actions SÓ roda na branch DEFAULT (main).
+#    Mergeie este arquivo em main — ter só em develop não liga o cron.
+#
+# Ligar (repo da instalação, não o upstream open source):
+#   Variables: RELOGIO_LIGADO = 1
+#   Secrets:   RELOGIO_APP_URL  = https://crm-gabrielle.vercel.app
+#              RELOGIO_SECRET   = mesmo valor de INTERNAL_SECRET no .env da Vercel
+#
+# Alternativa 1 min (também grátis): docs/runbooks/vercel-hobby-relogio.md
+name: relogio
+
+on:
+  schedule:
+    # GitHub atrasa schedules; */5 é o piso prático. Para 1 min use cron-job.org.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: relogio-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    if: vars.RELOGIO_LIGADO == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Bater o relógio
+        env:
+          RELOGIO_APP_URL: ${{ secrets.RELOGIO_APP_URL }}
+          RELOGIO_SECRET: ${{ secrets.RELOGIO_SECRET }}
+        run: |
+          set -eu
+          if [ -z "${RELOGIO_APP_URL:-}" ] || [ -z "${RELOGIO_SECRET:-}" ]; then
+            echo "Secrets RELOGIO_APP_URL / RELOGIO_SECRET ausentes."
+            exit 1
+          fi
+          base="${RELOGIO_APP_URL%/}"
+          url="${base}/api/v1/system/relogio/tick"
+          echo "POST ${url}"
+          # -w: status HTTP no fim; corpo vai pro log (sem o Bearer).
+          http_code=$(curl -sS -X POST -m 55 \
+            -H "Authorization: Bearer ${RELOGIO_SECRET}" \
+            -H "Content-Type: application/json" \
+            -o /tmp/relogio-body.json \
+            -w "%{http_code}" \
+            "${url}")
+          echo "HTTP ${http_code}"
+          head -c 2000 /tmp/relogio-body.json || true
+          echo
+          case "${http_code}" in
+            2??) ;;
+            *)
+              echo "Tick falhou — confira RELOGIO_SECRET (= INTERNAL_SECRET) e o domínio."
+              exit 1
+              ;;
+          esac
