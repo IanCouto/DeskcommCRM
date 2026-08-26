@@ -907,6 +907,25 @@ o `inline` dava e fica a **4px** do que o v3 rendia, contra 10px do `block`.
 | Paleta default (amber, emerald) muda de sRGB para oklch | — | **NÃO MEDIDO** se o desvio é perceptível. São ~20 elementos, todos de aviso/estado |
 | Telas internas (`/app`, kanban, inbox, contatos) | — | **NÃO COBERTO**, mesmo motivo de antes: instalação fresca redireciona para o onboarding |
 
+### O risco que o dono do projeto nomeou antes da migração, medido
+
+Na issue #239 o mantenedor deixou um aviso específico: uma varredura de "tokens
+sem consumidor" apontaria `duration-fast/base/slow` como mortos, e deletar o
+bloco `transitionDuration` **apagaria a transição de todo botão, input, textarea
+e badge do produto** — em silêncio, com `typecheck`, `lint`, `test:unit`,
+`invariants` e `build-and-size` verdes, porque `grep -rn toHaveScreenshot tests/`
+devolve zero.
+
+No Tailwind 4 o risco é maior que no 3, e por um motivo novo: **não existe espaço
+de tema `--duration-*`**. Um `@theme inline` não tem onde declará-los, e a
+tradução ingênua do config os perderia sem erro nenhum. Aqui eles viraram
+`@utility` explícito em `app/globals.css`.
+
+| caso | prioridade | estado |
+|---|---|---|
+| Botão e campo mantêm a duração de transição | `[P0]` | **PASS**, medido em elemento real nas duas versões ao mesmo tempo: `transitionDuration` = `0.12s` no `<button type="submit">` e no `<input type="email">` do login, idêntico em v3 e v4 |
+| `duration-base` / `duration-slow` não aparecem no CSS construído | — | **ESPERADO, não é regressão.** Nenhum arquivo os usa, e o Tailwind só emite classe usada — no v3 era igual. O `--duration-slow` que o `.card-pulse` consome é a **variável**, não a classe, e continua no `:root` |
+
 ### As provas versionadas
 
 Só os quatro pares que sustentam uma afirmação — o resto das capturas é artefato
