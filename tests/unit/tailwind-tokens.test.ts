@@ -152,6 +152,46 @@ describe("Tailwind 4 — utilitários que mudaram de significado", () => {
   });
 });
 
+describe("Tailwind 4 — `space-*` põe a margem no filho ANTERIOR", () => {
+  it("o rótulo declara display de bloco — senão a margem do grupo evapora", () => {
+    // O v3 gerava `.space-y-N > :not([hidden]) ~ :not([hidden]) { margin-top }`
+    // — margem no filho SEGUINTE. O v4 gera
+    // `:where(.space-y-N > :not(:last-child)) { margin-block-end }` — margem no
+    // filho ANTERIOR. Num grupo `<Label>` + campo, o anterior é o rótulo; e
+    // `<label>` nasce `display: inline`, que IGNORA margem vertical.
+    //
+    // Resultado medido na migração: todo grupo de formulário perdia exatamente
+    // um `--space-N`, colando rótulo e campo. Não gera erro, não muda teste, e
+    // some no meio de 91 arquivos alterados.
+    const fonte = fs.readFileSync(path.join(RAIZ, "components/ui/label.tsx"), "utf8");
+    const classes = /cva\(\s*\n?\s*"([^"]+)"/.exec(fonte)?.[1] ?? "";
+    expect(classes, "não achei a string de classe do labelVariants").not.toBe("");
+    expect(
+      /\b(block|inline-block|flex|inline-flex|grid|inline-grid|table)\b/.test(classes),
+      `labelVariants voltou a ser inline: "${classes}"`,
+    ).toBe(true);
+  });
+
+  it("nenhum componente de rótulo do design system fica sem display", () => {
+    // Generaliza o de cima: qualquer `<label` cru que este projeto renderize
+    // dentro de um grupo espaçado tem o mesmo problema. Aqui a guarda é sobre
+    // os componentes de UI, que são os reusados; rótulo solto em tela é achado
+    // de sonda (`tests/sonda-tailwind-4-antes-depois.ts`), não de unidade.
+    const dir = path.join(RAIZ, "components/ui");
+    const suspeitos: string[] = [];
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith(".tsx"))) {
+      const src = fs.readFileSync(path.join(dir, f), "utf8");
+      for (const m of src.matchAll(/<label\s+className="([^"]*)"/g)) {
+        const c = m[1] ?? "";
+        if (!/\b(block|inline-block|flex|inline-flex|grid|table)\b/.test(c)) {
+          suspeitos.push(`components/ui/${f}: <label className="${c.slice(0, 50)}">`);
+        }
+      }
+    }
+    expect(suspeitos, "rótulo inline dentro de componente de UI").toEqual([]);
+  });
+});
+
 // ── auxiliares ────────────────────────────────────────────────────────────
 
 function listarFontes(raizes: string[]): string[] {
