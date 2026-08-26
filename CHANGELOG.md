@@ -8,6 +8,21 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Formulários do Respondi entram como lead, com as respostas na ficha.** Antes, quem ligava
+  um formulário do Respondi ao CRM recebia um erro e **nenhum lead era criado** — o webhook
+  chegava com as respostas dentro de uma estrutura que o CRM não sabia ler, e a captação era
+  recusada inteira. Agora o nome, o telefone, o e-mail e cada pergunta respondida chegam na
+  ficha do contato, e o lead nasce no funil como qualquer outro. **Telefone sem código de
+  país é lido como brasileiro** (`(11) 99999-8888` vira `+5511999998888`, a mesma regra que o
+  WhatsApp já usava); número de fora do Brasil precisa vir com o `+` e o código do país.
+- **Quem recusa contato no formulário aparece na linha do tempo.** Se a pessoa marcou que
+  **não** aceita receber mensagens, isso vira um evento visível na ficha dela — em vez de a
+  equipe descobrir o silêncio depois, sem saber por quê. Recusa é informação, não ausência
+  de informação.
+
+
 ## [1.5.0] — 2026-08-25
 
 O histórico de quem chega pelos seus formulários agora existe — inclusive de quem **não**
