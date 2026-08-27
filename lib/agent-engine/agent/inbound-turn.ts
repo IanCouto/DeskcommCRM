@@ -58,6 +58,11 @@ import { applyLeadStateUpdate, getLeadState, type LeadStage, type LeadStateRow }
 import { applySaveLeadNote, buildNotesIndexBlock, getLeadNoteBody } from './lead-notes';
 import { applyScheduleFollowup, type FollowupWindowKnobs } from './schedule-followup';
 import {
+  avisarLeadDaEscalacao,
+  avisarLeadLendoOContato,
+  type DesfechoDoAviso,
+} from './aviso-de-escalacao';
+import {
   applyRequestHumanHandoff,
   buildHandoffSummary,
   detectAmbiguousOptOut,
@@ -218,8 +223,10 @@ export const AGENT_TOOL_DEFS = {
     description:
       'Passa a conversa para um ATENDENTE HUMANO imediatamente. Use quando o lead pedir para falar com ' +
       'uma pessoa, quando a situação exigir alguém humano (reclamação séria, questão jurídica/financeira ' +
-      'sensível) ou quando você atingir o limite do que pode resolver. Depois de acionar, o bot silencia ' +
-      'para este lead — encerre o turno sem enviar mais mensagens.',
+      'sensível) ou quando você atingir o limite do que pode resolver. ' +
+      'AVISE O LEAD ANTES: mande uma mensagem dizendo que você vai chamar alguém da equipe e SÓ ENTÃO ' +
+      'chame esta ferramenta — depois dela você não consegue mais falar com ele. Se você não avisar, ' +
+      'o sistema manda um aviso padrão no seu lugar. Acionada a ferramenta, encerre o turno.',
     // Schema LARGO para o SDK (o modelo vê o campo); a validação REAL é a whitelist .strict()
     // + guard de prototype pollution dentro de applyRequestHumanHandoff — campo extra/forjado
     // vira erro de ENSINO ao modelo, nunca exceção do SDK nem strip silencioso.
@@ -466,6 +473,15 @@ export async function comHandoffSeOrcamentoAcabar<T>(
      * — do checkpoint durável, zero LLM.
      */
     resumoDoCheckpoint: () => Promise<string>;
+    /**
+     * Avisa o lead de que uma pessoa vai assumir, ANTES do handoff.
+     *
+     * Também resolvido só no caminho de erro, e pela mesma razão do resumo: o
+     * caminho feliz não deve pagar por nada disto. O aviso é texto de CÓDIGO,
+     * então não gasta um token — o que aqui não é detalhe, é o único jeito de
+     * ele existir: o motivo do desvio é justamente não haver mais orçamento.
+     */
+    avisarLead: () => Promise<DesfechoDoAviso>;
     log: Logger;
   },
   chamada: () => Promise<T>,
@@ -475,6 +491,25 @@ export async function comHandoffSeOrcamentoAcabar<T>(
   } catch (err) {
     if (!(err instanceof LlmBudgetExceededError)) throw err;
     const resumo = await ctx.resumoDoCheckpoint();
+    // AVISA antes de silenciar — ver a nota de ORDEM no gatilho determinístico:
+    // `performHumanHandoff` arma a trava que o gate de envio lê, então a única
+    // janela em que o aviso passa é ANTES dela.
+    //
+    // O try/catch NÃO é defesa contra o emissor de hoje (`avisarLeadLendoOContato`
+    // já promete não lançar) — é contra a dependência que a ordem cria. Sem ele,
+    // um canal fora do ar faria o cliente perder o aviso E o atendente, quando o
+    // pior dos dois já teria acontecido no primeiro. Medido por
+    // `tests/unit/handoff-por-orcamento.test.ts` ("aviso que falha NÃO impede a
+    // passagem"), que reprovava a versão anterior desta linha.
+    let aviso: DesfechoDoAviso;
+    try {
+      aviso = await ctx.avisarLead();
+    } catch (erroDoAviso) {
+      ctx.log.warn('aviso ao lead falhou antes da passagem por orçamento', {
+        error: erroDoAviso instanceof Error ? erroDoAviso.message.slice(0, 200) : 'erro desconhecido',
+      });
+      aviso = { avisado: false, porque: 'erro_no_envio' };
+    }
     await performHumanHandoff(
       ctx.pool,
       { tenantId: ctx.tenantId, leadId: ctx.leadId, conversationId: ctx.conversationId },
@@ -482,10 +517,13 @@ export async function comHandoffSeOrcamentoAcabar<T>(
         reason: HANDOFF_REASON_ORCAMENTO,
         conversationSummary: `${RESUMO_DO_HANDOFF_POR_ORCAMENTO}\n\n${resumo}`,
         inboxTitle: TITULO_DO_HANDOFF_POR_ORCAMENTO,
+        avisoAoLead: aviso,
         log: ctx.log,
       },
     );
-    ctx.log.warn('turno interrompido pelo teto de gasto — conversa devolvida à fila humana');
+    ctx.log.warn('turno interrompido pelo teto de gasto — conversa devolvida à fila humana', {
+      lead_avisado: aviso.avisado,
+    });
     throw err;
   }
 }
@@ -993,6 +1031,29 @@ export async function runAgentTurn(
       conversationId: input.conversationId,
       resumoDoCheckpoint: () =>
         resumoDoCheckpointDuravel(pool, job.organization_id, leadIdDoJob, logDaEscolta),
+      // O canal nasce DENTRO da closure: instanciá-lo aqui faria todo turno feliz
+      // pagar por um adapter que só o caminho de erro usa. Sem `agentActorId` de
+      // propósito — quando o teto estoura antes da primeira chamada, não houve
+      // agente resolvido para creditar.
+      avisarLead: () =>
+        avisarLeadLendoOContato(
+          pool,
+          {
+            tenantId: job.organization_id,
+            leadId: leadIdDoJob,
+            conversationId: input.conversationId,
+            channelSessionId: input.channelSessionId,
+            jobId: job.id,
+          },
+          {
+            motivo: 'orcamento_de_ia',
+            channel: (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, deps.crmCfg)))(pool),
+            now: deps.clock?.() ?? new Date(),
+            log: logDaEscolta,
+            ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
+            ...(deps.sleep !== undefined ? { sleep: deps.sleep } : {}),
+          },
+        ),
       log: logDaEscolta,
     },
     () => executarTurnoDoAgente(deps, job, pool, ctx, input),
@@ -1293,24 +1354,82 @@ async function executarTurnoDoAgente(
     throw new Error(`abertura do turno falhou em get_lead_context (${openingContext.error.code})`);
   }
 
+  // Seam de canal (F2-25): o envio vai SÓ pela interface ChannelAdapter — o
+  // default WAHA-via-CRM envolve o sink F2-06. Instanciado por job (o pool é
+  // per-job neste codebase); trocar o adapter não muda nada abaixo.
+  // Fase 2B: o envio carrega o ai_agents.id REAL como ator (audit/metadata do
+  // CRM apontam o agente publicado, não um id genérico).
+  //
+  // ⚠️ Ele nasce AQUI, e não depois da compactação como antes, porque os dois
+  // desvios determinísticos logo abaixo — pedido de humano e suspeita de
+  // opt-out — passaram a FALAR com o lead antes de silenciar. Eles rodam antes
+  // de qualquer chamada de modelo; o canal precisa existir antes deles.
+  const turnCrmCfg =
+    agentConfig !== null ? { ...deps.crmCfg, agentActorId: agentConfig.agentId } : deps.crmCfg;
+  const channel = (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, turnCrmCfg)))(pool);
+  // STOP lido no turno (fonte: CRM via get_lead_context) — combinado com o cache
+  // durável leads.is_opted_out no gate 1 da cadeia (F2-13).
+  const optedOutThisTurn = openingContext.context.contact.is_blocked;
+  // LGPD (F4-09): base legal/anonimização do CRM lidas na abertura do turno (fonte confiável,
+  // regra dura nº 1) — o gate LGPD da cadeia veta anonimizado (sempre) e 1º toque de prospecção
+  // sem base legal. Resposta a inbound (isProspecting=false) não dispara o veto de base legal.
+  const lgpd = openingContext.lgpd;
+
+  /** Argumentos fixos do aviso ao lead — os dois desvios abaixo só trocam o motivo. */
+  const avisoDaEscalacao = {
+    ids: {
+      tenantId,
+      leadId,
+      conversationId: input.conversationId,
+      channelSessionId: input.channelSessionId,
+      jobId: job.id,
+    },
+    base: {
+      channel,
+      optedOutThisTurn,
+      now: clock(),
+      log: runLog,
+      lgpd,
+      agentId: agentConfig?.agentId ?? null,
+      ...(deps.knobs.disclosureMode !== undefined ? { disclosureMode: deps.knobs.disclosureMode } : {}),
+      ...(deps.sleep !== undefined ? { sleep: deps.sleep } : {}),
+    },
+  };
+
   // F4-06 (acceptance 1): detecção DETERMINÍSTICA (regex PT-BR, sem LLM) de pedido explícito
   // de atendimento humano na última mensagem do lead. Handoff é cidadão de 1ª classe (exigência
-  // Meta fiscalizada, blueprint 5.5) — dispara ANTES do modelo: o bot silencia sem gastar LLM,
-  // sem enviar. A ação (CRM force_human + cache + cancela crons + inbox) é idempotente.
+  // Meta fiscalizada, blueprint 5.5) — dispara ANTES do modelo: o bot não gasta LLM.
+  // A ação (CRM force_human + cache + cancela crons + inbox) é idempotente.
+  //
+  // ⚠️ ORDEM: AVISA e SÓ ENTÃO silencia. Não é preferência de redação — é a única
+  // ordem que funciona. `performHumanHandoff` grava `contacts.force_human = true`,
+  // e o gate 1 da cadeia (`stopGate`) lê `(is_blocked or force_human)` DIRETO da
+  // fonte, sob o lock, a cada tentativa de envio. Avisar depois seria avisar
+  // ninguém: a própria trava que a passagem acabou de armar veta a mensagem.
   const inboundSignal = latestInboundSignal(openingContext.context.messages);
   if (
     detectHumanHandoffRequest(inboundSignal) ||
     (agentConfig !== null && matchesHandoffKeyword(inboundSignal, agentConfig.handoffKeywords))
   ) {
+    const aviso = await avisarLeadDaEscalacao(pool, avisoDaEscalacao.ids, {
+      ...avisoDaEscalacao.base,
+      motivo: 'pediu_humano',
+    });
     await performHumanHandoff(
       pool,
       { tenantId, leadId, conversationId: input.conversationId },
-      { reason: 'requested_human', conversationSummary: buildHandoffSummary(previous), log: runLog },
+      {
+        reason: 'requested_human',
+        conversationSummary: buildHandoffSummary(previous),
+        avisoAoLead: aviso,
+        log: runLog,
+      },
     );
     runLog.info('handoff humano acionado por pedido explícito do lead (detecção determinística)', {
       kind: job.kind,
+      lead_avisado: aviso.avisado,
     });
-    return; // bot silencia: sem modelo, sem envio neste turno
+    return; // bot silencia: o aviso já saiu, e nada mais sai neste turno
   }
 
   // F4-07: STOP AMBÍGUO ("para de me mandar isso", "não quero mais receber", "me tira da
@@ -1320,6 +1439,15 @@ async function executarTurnoDoAgente(
   // is_opted_out) e escala à inbox para o humano confirmar o opt-out real (is_blocked) no
   // CRM. Cancela os follow-ups agendados de tabela. Nada disso reverte (regra dura nº 2).
   if (detectAmbiguousOptOut(latestInboundSignal(openingContext.context.messages))) {
+    // O aviso daqui NÃO fala em atendente — quem pediu para parar não quer ouvir
+    // sobre atendimento (`textoDoAviso`, motivo `suspeita_de_opt_out`). Ele
+    // CONFIRMA a parada, que é o padrão de mensageria para um opt-out, e diz que
+    // uma pessoa vai conferir. Sair calado deixaria a pessoa sem saber se o
+    // pedido dela foi ouvido — e ela pediu justamente para ser ouvida.
+    const aviso = await avisarLeadDaEscalacao(pool, avisoDaEscalacao.ids, {
+      ...avisoDaEscalacao.base,
+      motivo: 'suspeita_de_opt_out',
+    });
     await performHumanHandoff(
       pool,
       { tenantId, leadId, conversationId: input.conversationId },
@@ -1327,13 +1455,15 @@ async function executarTurnoDoAgente(
         reason: 'suspected_optout',
         conversationSummary: buildHandoffSummary(previous),
         inboxTitle: 'Suspeita de opt-out — confirmar bloqueio do contato no CRM',
+        avisoAoLead: aviso,
         log: runLog,
       },
     );
     runLog.info('possível opt-out detectado no inbound — bot silenciado e escalado ao humano', {
       kind: job.kind,
+      lead_avisado: aviso.avisado,
     });
-    return; // bot silencia: sem modelo, sem envio neste turno
+    return; // bot silencia: a confirmação já saiu, e nada mais sai neste turno
   }
 
   // F3-07: compaction + flush pré-compaction. Quando o histórico cresce além do limiar,
@@ -1410,21 +1540,6 @@ async function executarTurnoDoAgente(
     });
   }
 
-  // Seam de canal (F2-25): o envio vai SÓ pela interface ChannelAdapter — o
-  // default WAHA-via-CRM envolve o sink F2-06. Instanciado por job (o pool é
-  // per-job neste codebase); trocar o adapter não muda nada abaixo.
-  // Fase 2B: o envio carrega o ai_agents.id REAL como ator (audit/metadata do
-  // CRM apontam o agente publicado, não um id genérico).
-  const turnCrmCfg =
-    agentConfig !== null ? { ...deps.crmCfg, agentActorId: agentConfig.agentId } : deps.crmCfg;
-  const channel = (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, turnCrmCfg)))(pool);
-  // STOP lido no turno (fonte: CRM via get_lead_context) — combinado com o cache
-  // durável leads.is_opted_out no gate 1 da cadeia (F2-13).
-  const optedOutThisTurn = openingContext.context.contact.is_blocked;
-  // LGPD (F4-09): base legal/anonimização do CRM lidas na abertura do turno (fonte confiável,
-  // regra dura nº 1) — o gate LGPD da cadeia veta anonimizado (sempre) e 1º toque de prospecção
-  // sem base legal. Resposta a inbound (isProspecting=false) não dispara o veto de base legal.
-  const lgpd = openingContext.lgpd;
 
   // F4-07: STOP no CRM detectado no turno → cancela TODOS os follow-ups agendados do lead
   // (não só o job atual). O stopGate já veta ESTE turno; o cancel garante que nenhum cron
@@ -2089,10 +2204,35 @@ async function executarTurnoDoAgente(
       ...AGENT_TOOL_DEFS.request_human_handoff,
       execute: async (raw) => {
         try {
+          // ═══ O PISO: se o modelo não falou, o sistema fala ═══
+          //
+          // A descrição da tool manda avisar o lead ANTES de chamá-la, e a
+          // mensagem de retorno repete. Mas capacidade que depende de o modelo
+          // LEMBRAR é capacidade que não existe metade das vezes — a mesma
+          // conclusão que fez `expectativaDeAtendimento` parar de esperar que
+          // ele consultasse a disponibilidade sozinho.
+          //
+          // `seq` é o contador de mensagens FÍSICAS já enviadas neste turno. Zero
+          // significa: o modelo decidiu passar a conversa sem dizer nada a
+          // ninguém — e depois desta tool ele não consegue mais falar, porque
+          // `force_human` arma o `stopGate`. Então o aviso determinístico sai
+          // AGORA, antes do handoff.
+          //
+          // `seq > 0` significa que ele JÁ falou neste turno; mandar o aviso ali
+          // em cima seria o robô dizendo duas vezes a mesma coisa, com palavras
+          // diferentes. Confiamos na fala dele e registramos que o piso não foi
+          // preciso.
+          const aviso =
+            seq === 0
+              ? await avisarLeadDaEscalacao(pool, avisoDaEscalacao.ids, {
+                  ...avisoDaEscalacao.base,
+                  motivo: 'pediu_humano',
+                })
+              : ({ avisado: true } as const);
           const res = await applyRequestHumanHandoff(
             pool,
             { tenantId, leadId, conversationId: input.conversationId },
-            { conversationSummary: buildHandoffSummary(previous), log: runLog },
+            { conversationSummary: buildHandoffSummary(previous), avisoAoLead: aviso, log: runLog },
             raw,
           );
           if (!res.ok) return res; // erro de ensino (payload fora da whitelist)

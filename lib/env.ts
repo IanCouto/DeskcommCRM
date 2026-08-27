@@ -203,12 +203,17 @@ const schema = z.object({
    */
   AI_BUDGET_ENFORCEMENT: z.string().optional().default("on"),
 
-  // Workers — opt-in via env so dev doesn't run loops. Production cron sets it.
-  EVENT_LOG_WORKER_ENABLED: z
-    .enum(["true", "false"])
-    .optional()
-    .default("false")
-    .transform((v) => v === "true"),
+  // `EVENT_LOG_WORKER_ENABLED` viveu aqui até 2026-08-25 e NUNCA teve leitor: o
+  // campo era declarado, documentado no `.env.example` com `false` e lido por
+  // ninguém (medido: zero ocorrências fora da própria declaração). Saiu junto
+  // com a chegada do laço de verdade (`lib/event-log/drain-loop.ts`), e o ritmo
+  // dele agora mora nos `EVENT_LOG_DRAIN_*` de `lib/agent-engine/env.ts` — o
+  // schema do processo que roda o laço, e não o do app.
+  //
+  // Não virou o liga/desliga do laço novo de propósito: o default publicado era
+  // `false`, então respeitá-lo faria o conserto não chegar a NENHUMA instalação
+  // já existente — que é o item 15 do Definition of Done ("a mudança chega a
+  // quem já instalou"). O worker existe para rodar laços; este liga sempre.
 
   // O endpoint :test devolve um trace fake quando esta flag = 'true'.
   // Default 'false' desde que a S-13.08 landou: `callInternalRuntime` executa

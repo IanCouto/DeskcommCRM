@@ -245,8 +245,43 @@ jobs:
       # spec media a sorte do ambiente. `scripts/seed-e2e-catalogo-openrouter.ts`
       # (main, 2026-08-09) semeia o catálogo no job, então a condição que a excluía
       # deixou de existir e ela voltou para a lista de execução.
+      #
+      # `inbox-tempo-real` entrou aqui em 2026-08-26, no dia seguinte ao merge, e o
+      # motivo é medido nos dois eixos que importam — não é "está flaky, tira".
+      #
+      #  (a) ELE NÃO DISCRIMINA O CONSERTO QUE DIZ GUARDAR. Bancada local fiel a
+      #      este job (Supabase local pg17, `baseline.sql`, Realtime reiniciado
+      #      depois do baseline, `next build` de produção, os mesmos seeds),
+      #      revertendo SÓ `lib/supabase/browser.ts` para a versão anterior ao
+      #      #327 — e conferindo no bundle que o conserto saiu
+      #      (`grep -rc realtime-token .next/static` → 0, controle positivo
+      #      `sb-deskcomm-auth` → 1):
+      #
+      #          com o conserto  → 1 passed
+      #          sem o conserto  → 1 passed
+      #
+      #      Causa provável: `useMessagesRealtime` liga `refetchOnWindowFocus:
+      #      true` e o `execFileSync` que injeta a mensagem devolve o foco à
+      #      janela. Dois caminhos, mesma saída. Quem discrimina de verdade é
+      #      `tests/unit/realtime-token-do-socket.test.ts`, no `verify`.
+      #
+      #  (b) ELE REPROVA PR ALHEIO POR SORTE. Desde o conserto do locator:
+      #      #327 `dd58ec7c` pass · #343 `b508208b` pass · #344 `4e5acb21` FAIL ·
+      #      #344 rerun do MESMO sha FAIL. O #344 não toca uma linha de inbox,
+      #      realtime ou socket.
+      #
+      #      Um gate que reprova por moeda é pior que gate nenhum: ele treina o
+      #      time a reexecutar em vez de olhar, e foi assim que a degradação
+      #      silenciosa passou despercebida da primeira vez.
+      #
+      #      A spec CONTINUA no repositório e continua sendo a cerca de ponta a
+      #      ponta contra o sintoma relatado — roda local. Volta para a lista de
+      #      execução quando a issue #347 entregar entrega determinística (o
+      #      caminho provável é desligar o `refetchOnWindowFocus` durante a
+      #      asserção, para sobrar um caminho só).
       FORA_DO_CI: >-
         vps-fresh-onboarding.spec.ts
+        inbox-tempo-real.spec.ts
     steps:
       - uses: actions/checkout@v7
 
@@ -297,6 +332,41 @@ jobs:
         run: |
           psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 -q -f supabase/baseline.sql
+
+      # ⚠️ O REALTIME PRECISA REINICIAR DEPOIS DO BASELINE — senão ele assina e
+      # não entrega, em silêncio.
+      #
+      # A ordem acima é `supabase start` (que sobe o Realtime) e SÓ DEPOIS o
+      # baseline, que é quem adiciona `messages`, `conversations`, `crm_leads` e
+      # as demais à publication `supabase_realtime`. O Realtime já subiu com a
+      # publication sem essas tabelas e não as reconhece depois.
+      #
+      # Medido no PR #327, com o defeito atravessando três rodadas: o script de
+      # apoio confirmou a gravação (`[e2e-chega-mensagem] entregue em 6f5fd1f2…`)
+      # e o snapshot da página no mesmo instante mostrava "Nenhuma mensagem nesta
+      # conversa." — gravado no banco, nunca entregue à tela. Canal anônimo e
+      # canal sem publication falham do MESMO jeito: respondem SUBSCRIBED e
+      # calam, que é a razão de isto ter custado três rodadas de 15 minutos.
+      #
+      # Na VPS o problema não existe: lá o `install.sh` aplica o baseline e só
+      # então o compose sobe os serviços. Reiniciar aqui é o que faz o ambiente
+      # do teste refletir o de quem instalou.
+      - name: Reiniciar o Realtime (a publication nasceu no passo anterior)
+        run: |
+          IDS=$(docker ps -q --filter name=supabase_realtime)
+          if [ -z "$IDS" ]; then
+            echo "::error::Nenhum container supabase_realtime — o stack não subiu como esperado."
+            exit 1
+          fi
+          docker restart $IDS
+          # Espera ficar saudável: seguir sem isso devolve o mesmo silêncio que
+          # este passo existe para eliminar, só que mais tarde e sem explicação.
+          for i in $(seq 1 30); do
+            estado=$(docker inspect -f '{{.State.Health.Status}}' $IDS 2>/dev/null || echo desconhecido)
+            [ "$estado" = "healthy" ] && { echo "realtime saudável em ~$((i*2))s"; break; }
+            sleep 2
+          done
+          docker inspect -f '{{.State.Health.Status}}' $IDS
 
       - name: Exportar credenciais do stack local
         run: |

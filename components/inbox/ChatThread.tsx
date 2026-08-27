@@ -112,9 +112,38 @@ export function ChatThread({ conversationId, onResponder }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [items.length, conversationId, paginas]);
 
+  /**
+   * O ESTADO DO CANAL DESTE THREAD, PUBLICADO SEMPRE — inclusive quando não há
+   * mensagem nenhuma.
+   *
+   * ⚠️ A primeira versão punha estes atributos só no caso de SUCESSO, junto com
+   * o `data-testid`. Isso os tornava invisíveis exatamente no estado em que
+   * mais importam: conversa sem mensagens, esperando a primeira chegar. O canal
+   * existe desde que a conversa abre; o sinal dele não pode depender de já
+   * haver o que mostrar.
+   *
+   * Custou uma rodada de CI para aparecer, e por um motivo que vale registrar:
+   * na máquina de quem desenvolve a conversa tem histórico acumulado, então o
+   * caminho de sucesso é o único que se exercita. No CI o banco é fresco e a
+   * conversa nasce vazia — o estado que nunca se vê localmente é o normal lá.
+   *
+   * Os dois atributos dizem coisas diferentes e nenhum sozinho basta:
+   * `-status-mensagens` distingue "assinou" de "nem chegou a assinar";
+   * `-divergencias-mensagens` é o que denuncia canal ASSINADO E MUDO, porque só
+   * incrementa quando o refetch traz o que o canal não trouxe.
+   */
+  const sinalDoCanal = {
+    "data-testid": "chat-thread",
+    "data-realtime-status-mensagens": q.realtimeStatus,
+    "data-refetch-divergencias-mensagens": q.seguranca?.divergencias ?? 0,
+  } as const;
+
   if (!conversationId) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div
+        {...sinalDoCanal}
+        className="flex h-full items-center justify-center text-sm text-muted-foreground"
+      >
         Selecione uma conversa
       </div>
     );
@@ -122,7 +151,7 @@ export function ChatThread({ conversationId, onResponder }: Props) {
 
   if (q.isLoading) {
     return (
-      <div className="space-y-3 p-4">
+      <div {...sinalDoCanal} className="space-y-3 p-4">
         {[1, 2, 3, 4].map((i) => (
           <Skeleton key={i} className="h-12 w-2/3" />
         ))}
@@ -132,7 +161,10 @@ export function ChatThread({ conversationId, onResponder }: Props) {
 
   if (q.isError) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+      <div
+        {...sinalDoCanal}
+        className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground"
+      >
         <p>Erro ao carregar mensagens.</p>
         <Button size="sm" variant="outline" onClick={() => q.refetch()}>
           Tentar novamente
@@ -143,7 +175,10 @@ export function ChatThread({ conversationId, onResponder }: Props) {
 
   if (items.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div
+        {...sinalDoCanal}
+        className="flex h-full items-center justify-center text-sm text-muted-foreground"
+      >
         Nenhuma mensagem nesta conversa.
       </div>
     );
@@ -160,7 +195,7 @@ export function ChatThread({ conversationId, onResponder }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div {...sinalDoCanal} className="flex h-full flex-col">
       <div ref={scrollerRef} className="flex-1 overflow-y-auto py-2">
         {q.hasNextPage && (
           <div className="flex justify-center py-2">

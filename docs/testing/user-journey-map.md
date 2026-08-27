@@ -230,8 +230,37 @@ Evidência: `.superpowers/evidence/ia-360-w3/`.
 | J8.7 | A **ida** aparece na linha do tempo | atividade "Passou para humano" também pelo caminho do harness/casos | FAIL(BUG-05) → PASS |
 | J8.8 | O agente retoma **sabendo** o que a pessoa fez | a abertura do turno (`ritualBlocks`) cita a decisão dela, sem apagar o acumulado anterior | PASS |
 | J8.9 | Status da conversa escalada em português | o cabeçalho mostrava `pending` cru | FAIL → PASS |
+| J8.10 | **O cliente é AVISADO antes de a IA sair de campo** | mensagem ao lead dizendo que uma pessoa vai assumir, ANTES do silêncio | FAIL(BUG-06) → PASS |
+| J8.11 | O aviso respeita o motivo | quem pediu para PARAR recebe confirmação da parada, não oferta de atendente | FAIL(BUG-06) → PASS |
+| J8.12 | O aviso respeita a equipe real | conta sem ninguém configurado não recebe promessa de contato | FAIL(BUG-06) → PASS |
+| J8.13 | A passagem por SENTIMENTO abre item na Central | `triggerHandoff` não abria nenhum — cliente sem resposta E time sem sinal | FAIL(BUG-07) → PASS |
 
-Bugs desta jornada estão detalhados em `HANDOFF-ia-360.md` (BUG-01 a BUG-05).
+Bugs desta jornada estão detalhados em `HANDOFF-ia-360.md` (BUG-01 a BUG-05) e em
+`HANDOFF-handoff-avisa-o-lead.md` (BUG-06, BUG-07).
+
+### BUG-06 — a passagem para humano era MUDA (2026-08-26)
+
+Achado pelo dono do produto, em duas conversas reais na mesma hora, e a medição
+no banco de produção mostrou que **são dois motores, não um**:
+
+```
+status  | bot_silenced_until | last_handoff_reason | force_human
+open    | infinity           | requested_human     | t     <- performHumanHandoff (motor, pg)
+pending | infinity           | low_sentiment       | f     <- triggerHandoff (CRM, supabase-js)
+```
+
+O pior caso não foi o pedido explícito: foi o do sentimento. Às 14:50:32 o agente
+PERGUNTOU o e-mail do cliente; às 14:51:01 o worker de sentimento disparou o
+handoff; às 14:51:27 o e-mail chegou e o turno foi pulado. Ele respondeu uma
+pergunta da própria IA para o vazio.
+
+**A ordem é obrigatória:** `performHumanHandoff` grava `force_human`, e o gate 1
+da cadeia de envio o relê a cada tentativa — avisar depois é avisar ninguém.
+Provado por sabotagem em `evidence/handoff-avisa-antes/sabotagem-ordem-invertida.txt`.
+
+Guardas: `tests/invariants/handoff-avisa-o-lead.test.ts` (turno real contra
+Postgres do baseline), `tests/unit/handoff-avisa-o-lead.test.ts` (varredura AST
+dos dois motores) e `tests/unit/aviso-ao-lead.test.ts` (o texto).
 
 ---
 
@@ -848,6 +877,231 @@ Toda spec que usa o helper sobe o teto (240 s em quatro delas, 90 s em uma) —
 isso não está escrito em lugar nenhum, e quem adota o helper sem subir o teto vê
 dois testes alheios estourarem sem call log de locator. Se você for adotar o
 helper numa spec nova: `test.describe.configure({ timeout: 120_000 })`.
+
+## O inbox em tempo real — o defeito que veio de fora (2026-08-24)
+
+**Sintoma relatado pelo dono:** *"Recebemos mensagem e só reflete no inbox (na
+UI) se atualizarmos a página."*
+
+**Causa raiz, medida no socket — não estava em nenhuma linha nossa.** O cookie
+de sessão é httpOnly, então o supabase-js do browser não enxerga a sessão. Nesse
+caso a callback `accessToken` PADRÃO do `SupabaseClient` termina em
+`?? this.supabaseKey`: **o socket do Realtime assinava com a anon key**. Canal
+anônimo responde `SUBSCRIBED`, a RLS filtra do outro lado, e ele nunca entrega
+nada — em silêncio, com todo sinal disponível dizendo "saudável".
+
+O repo já corrigia isto chamando `supabase.realtime.setAuth(token)`. **Aquilo
+parou de funcionar num bump de dependência**, sem uma linha nossa mudar: a
+partir do realtime-js 2.112.x a callback vence o token manual, o que a própria
+biblioteca documenta em `setAuth` — *"the callback is the source of truth (…)
+even after a bootstrap/override `setAuth(token)` call"*.
+
+**Como foi medido** (ligando o `logger` do realtime-js e instrumentando
+`setAuth`, com dois canais no mesmo socket — que é o que o inbox faz, lista +
+conversa aberta):
+
+| Sonda | O que assinou | Entregas |
+|---|---|---|
+| tabela de controle sozinha, policy `using(true)` | 1 canal | **entregou** |
+| `conversations` sozinha | 1 canal | **entregou** |
+| controle **+** `conversations` no mesmo socket | 2 canais | 1º entregou, **2º zero** |
+
+O `phx_join` do 1º levava `{"iss":"…/auth/v1"}` (JWT do usuário); o do 2º levava
+`{"iss":"supabase-demo","role":"anon"}`. Instrumentando `setAuth`: o token do
+usuário durava ~2ms antes de `_setAuthSafely` o trocar, e o heartbeat (~30s)
+refazia a troca para sempre.
+
+**O que a tabela de controle provou, e por que ela importa.** Sem ela, "zero
+entregas" seria indistinguível de instrumento quebrado — que devolve zero do
+mesmo jeito. Ela é o controle positivo que valida a sonda.
+
+**Conserto:** fonte ÚNICA de token, na callback `realtime.accessToken` de
+`lib/supabase/browser.ts`. Ela é melhor que o `setAuth` por uma razão que
+independe do bug: o socket a chama de novo a cada heartbeat e em cada reconexão,
+então o token de 1h deixa de ser bomba-relógio para quem fica com o inbox
+aberto. Sai do `useRealtimeChannel` toda a dança de auth — mantê-la seria manter
+duas fontes, que era o defeito.
+
+**Segundo achado, do mesmo puxão:** o inbox era **a única tela viva sem rede de
+segurança**. Board (`useBoard`) e linha do tempo (`useLeadTimeline`) já usavam
+`useRefetchDeSeguranca`; o inbox tinha só `refetchOnWindowFocus`, que exige
+TROCAR DE ABA. E o inbox é a tela em que se fica parado olhando: com o canal
+morto e a aba em foco, a lista ficava congelada indefinidamente num passado que
+parece presente. Agora as duas pontas (lista e conversa) têm a rede.
+
+**Por que os testes estavam verdes o tempo todo** — a lição que vale além deste
+bug: eles exercitavam `authenticateRealtime` contra um cliente FAKE
+(`{ realtime: { setAuth: vi.fn() } }`) e afirmavam que `setAuth` fora CHAMADO. O
+que quebrou foi o EFEITO de chamá-lo. **Teste que guarda a chamada em vez do
+comportamento não vermelhece quando o comportamento morre.**
+
+| # | Caso | Prova |
+|---|------|-------|
+| JR.1 | Mensagem chega na conversa ABERTA, sem reload | `tests/e2e/inbox-tempo-real.spec.ts` (dirige a tela; nenhum `reload()` depois de abrir o inbox) |
+| JR.2 | A LISTA reage à mesma mensagem | mesmo spec — é o 2º canal do socket, o que ficava anônimo |
+| JR.3 | A callback é a fonte do token, e nunca a anon key | `tests/unit/realtime-token-do-socket.test.ts` |
+| JR.4 | O hook não autentica por conta própria (fonte única) | idem |
+| JR.5 | Token perto de vencer é renovado; token válido vem do cache | idem |
+| JR.6 | As duas pontas do inbox têm rede de segurança | `tests/unit/realtime-reconecta.test.ts` |
+
+**Sabotagens que confirmam que os testes vigiam** (rodadas em 2026-08-24, com o
+conserto já commitado):
+
+| Sabotagem | Reprovações |
+|---|---|
+| remover a callback de `browser.ts` | 6 de 7 |
+| a callback devolve a anon key (o que a PADRÃO fazia) | 3, incluindo *"devolve o token da sessão — NUNCA a anon key"* |
+| tirar a rede de segurança da lista de conversas | 1, apontando a lista |
+
+**A prova que fecha o caso — o mesmo teste dos dois lados** (2026-08-24, build de
+produção contra o Supabase local, banco semeado pelos scripts do repo):
+
+| Código sob teste | Resultado |
+|---|---|
+| com o conserto | `1 passed` — a mensagem apareceu na tela sem reload |
+| revertido ao da `main` (`git checkout main -- lib/supabase/browser.ts hooks/realtime/useRealtimeChannel.ts`) | `1 failed` — *element(s) not found*, 25 s |
+
+Reverter **só o fonte**, mantendo o teste, é o que separa "o teste vigia" de "o
+teste passa". Um verde sozinho não distingue as duas coisas.
+
+⚠️ **Achado de ambiente, não do repo:** o build morria com
+`'node_modules/node_modules' is a symlink causes that causes an infinite loop!` —
+um symlink auto-referente de 2026-08-13, resíduo de sessão anterior (nenhum
+script do repo o cria). E o primeiro build parecia ter passado porque
+`pnpm e2e:build 2>&1 | tail -20` devolve o exit do `tail`, não o do build
+([[feedback-pipe-tail-mascara-exit]]). Confira `.next/BUILD_ID`, nunca o exit de
+um pipe.
+
+### Vai escrever uma spec que depende de tempo real? Leia isto primeiro
+
+**No CI, o Realtime sobe ANTES de as tabelas entrarem na publication.** O `e2e.yml` faz
+`supabase start` (que sobe o Realtime) e só depois aplica o `baseline.sql`, que é quem
+adiciona `messages`, `conversations`, `crm_leads` e as demais à publication
+`supabase_realtime`. O Realtime já subiu sem elas e não as reconhece depois: **assina,
+responde `SUBSCRIBED` e nunca entrega**.
+
+Custou três rodadas de CI de 15 minutos para achar, porque o sintoma é idêntico ao do canal
+anônimo — os dois respondem `SUBSCRIBED` e calam. O que separou os dois foi cruzar o log do
+script (`[e2e-chega-mensagem] entregue em 6f5fd1f2…`) com o snapshot da página no mesmo
+instante (`"Nenhuma mensagem nesta conversa."`): gravado no banco, nunca entregue à tela.
+
+Há um passo no `e2e.yml` que reinicia o Realtime depois do baseline e resolve isso. **Ele
+existe desde o PR #327 — confira que continua lá antes de culpar o seu código:**
+
+```bash
+grep -c "Reiniciar o Realtime" .github/workflows/e2e.yml   # 1 = está lá
+```
+
+Na VPS o problema não existe: o `install.sh` aplica o baseline e só então o compose sobe os
+serviços. É o CI que inverte a ordem.
+
+⚠️ **Uma spec que navega com `page.goto()` antes de cada asserção NÃO exercita o canal** —
+ela refaz o fetch e passaria mesmo com o tempo real morto. `inbox-quem-manda.spec.ts` é assim
+(medido: `goto` nas linhas 174 e 272, asserções depois), e por isso ela não foi afetada pelo
+defeito acima. Se a sua spec existe para provar tempo real, ela não pode recarregar depois de
+abrir a tela — e vale afirmar `data-realtime-status="subscribed"` **antes** de provocar o
+evento, senão um canal que suba tarde passa igual.
+
+**A `degradacao-silenciosa.spec.ts` provavelmente está reprovando em silêncio hoje — e é
+uma PREDIÇÃO, não uma medição.** Achado do QA nesta revisão, verificado por mim na fonte:
+
+- Ela mata o socket de propósito (`routeWebSocket`, linha 113) e tem uma **pré-condição**
+  antes da asserção que interessa (linhas 156-164): `expect(engolidos).toBeGreaterThan(0)`,
+  cuja razão escrita é "se nenhum quadro de dados foi engolido, a entrega não foi morta e o
+  teste não mediu degradação nenhuma".
+- Mas ela é `test.fail()`, e o próprio arquivo avisa (linhas 89-92) que isso **esconde QUAL
+  asserção falhou**: "uma cerca que falha na PRÉ-CONDIÇÃO parece idêntica a uma que falha no
+  ponto certo". O escape é `CERCA_CRUA=1`.
+
+Junte as duas com o defeito da publication: se o canal já não entrega nada, não há quadro de
+entrega para engolir → `engolidos` fica 0 → a pré-condição reprova → e o `test.fail()` diz
+"falhou como esperado". **A cerca estaria quebrada sem sinal.**
+
+**O mecanismo foi FECHADO por leitura (QA, 2026-08-25) — cada elo é uma linha, nenhum é
+inferência.** Verificado na fonte por mim:
+
+```
+ehEntrega()                        → só true se q[3] === "postgres_changes"
+if (ehEntrega(...)) { engolidos++ }  ← é o ÚNICO lugar que incrementa
+expect(engolidos).toBeGreaterThan(0) ← a pré-condição, antes da asserção que interessa
+```
+
+⚠️ **Sem número de linha, de propósito.** A primeira versão deste bloco citava `:105`, `:149`
+e `:159` — e estava certa na branch onde foi escrita e errada na `main`, porque o próprio
+cabeçalho que documenta isto empurrou o arquivo 31 linhas. O registro mudou o objeto que ele
+descreve. Ache por `grep -n "function ehEntrega" tests/e2e/degradacao-silenciosa.spec.ts`.
+
+Com a publication sem as tabelas, o servidor **nunca emite** quadro `postgres_changes` — emite
+`join`, `phx_reply` e `heartbeat`, que são justamente os que o proxy deixa passar de propósito.
+Logo `ehEntrega` nunca devolve true, `engolidos` fica 0, a pré-condição reprova, e o
+`test.fail()` mostra "falhou como esperado".
+
+**E a consequência é mais interessante que o bug** (formulação do QA): se a predição se
+confirmar, aquela cerca esteve quebrada desde que o defeito da publication existe, e ninguém
+podia ver — não por descuido, mas porque **o mecanismo que a protege de virar teatro (o
+`test.fail()`) é o mesmo que escondeu que ela virou**. É uma cerca cujo desenho de segurança
+criou o próprio ponto cego.
+
+Como confirmar (ninguém mediu ainda): rodar `CERCA_CRUA=1 pnpm exec playwright test
+degradacao-silenciosa.spec.ts` no CI antes e depois do passo de restart. Se antes ela falha na
+pré-condição e depois no ponto certo, a predição se confirma — e o conserto do CI terá tirado
+essa spec de um estado em que ela não provava nada.
+
+**O que continua faltando nela, e não é o mesmo que a pré-condição:** não há controle
+positivo estrito — nenhum caso com o canal VIVO afirmando que a tela **não** mostra o aviso.
+A pré-condição garante que a sabotagem funcionou; ela não garante que o aviso é consequência
+da sabotagem. Se o aviso fosse incondicional, a spec passaria idêntica. O QA estimou cinco
+linhas para fechar isso, e a dívida é dele por escrito — não foi feita aqui porque a spec não
+é deste PR.
+
+**Registro de dívida, apontado pelo QA na revisão desta entrega:** enquanto o passo do
+restart estiver só na branch do #327 e não na `main`, toda spec nova de tempo real nasce
+quebrada no CI pelo motivo acima — e quem a escrever vai perder as mesmas horas.
+
+**Evidência visual:** `evidence/inbox-tempo-real/mensagem-sem-reload.png` — a
+conversa aberta com as mensagens das rodadas, cada uma entregue sem recarregar.
+
+## O gate de CHANGELOG que falta — desenho combinado (2026-08-25)
+
+**Nada no repo cobra que mudança de comportamento tenha entrada no CHANGELOG.** Esquecer é de
+graça, e aconteceu duas vezes num dia: o PR #326 entrou na `main` sem linha nenhuma (a
+normalização do Respondi altera dado do cliente em silêncio — telefone sem DDI vira
+brasileiro), e o conserto do tempo real do inbox só não saiu pelo mesmo buraco porque o dono
+mandou reconciliar com o time.
+
+O QA (`Assistente e Testes`) vai escrever o gate. Desenho combinado numa revisão cruzada, com
+as armadilhas já medidas — está aqui porque a conversa bateu no teto anti-loop do Espaço antes
+do último ponto ser entregue.
+
+**A armadilha que matou o primeiro desenho:** um teste em `tests/unit` que faça
+`git diff origin/main...HEAD` **nasce cego**. O `actions/checkout` do `ci.yml` não tem
+`fetch-depth`, então o clone traz UM commit e não há `origin/main` contra o que comparar — o
+gate passaria vazio, verde sempre. *Gate que nasce cego é pior que gate ausente, porque
+ninguém procura o que já tem cerca.*
+
+**Forma acordada:**
+
+| peça | o quê |
+|---|---|
+| `scripts/gate-changelog.ts` | a lógica; recebe a lista de arquivos tocados como argumento |
+| `pnpm gate:changelog` | uso local, alimentado por `git diff --name-only origin/main...HEAD` (local TEM o histórico) |
+| passo no workflow | alimentado por `github.event.pull_request.base.sha`, que o Actions dá de graça |
+| o que cobra | **entrada em `[Não lançado]`**, nunca "o arquivo foi tocado" — um cobra o efeito, o outro o gesto |
+| allowlist | **nomeada e travada por `toEqual([...])`**, como `tests/unit/branding.test.ts` — travar por contagem deixa trocar uma dívida por outra em silêncio |
+
+**O ponto que ficou sem resposta, e a proposta:** como separar "mudou comportamento" de
+"refactor puro" sem virar imposto. A ideia de cobrar só de quem toca `app/api` ou `app/app`
+**falha no primeiro caso real** — medido: o PR #327 não toca nenhum dos dois (mexe em `lib/`,
+`hooks/inbox`, `components/inbox`) e é a mudança mais visível ao usuário daquele dia. Falso
+negativo silencioso.
+
+Proposta alternativa: **inverter o ônus em vez de adivinhar**. Todo PR que toca código de
+produto exige entrada; quem acha que não precisa **declara** (uma linha no corpo do PR ou no
+commit, com o motivo) e o gate lê a declaração. Três ganhos: não há falso negativo silencioso
+(não ter entrada passa a exigir ato consciente); a decisão fica **escrita e auditável**; e não
+vira imposto, porque uma linha de declaração custa menos que uma linha vazia de changelog —
+que é o risco real, já que ela polui a tela de produto do operador. Não é convenção nova: o
+`tests/unit/navegacao-completude.test.ts` já aceita exceção **com justificativa escrita**.
 
 ## A migração para o Tailwind 4 mudou 252 classes que ninguém sabia estarem mortas (2026-08-26)
 

@@ -16,10 +16,12 @@ import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createLeadHandler } from "@/app/api/v1/leads/_handler";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
+import { classificarLeadInicial, type ResultadoClassificacaoInicial } from "@/lib/leads/classificacao-inicial";
 import type { CreateLeadInput } from "@/lib/schemas";
 import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
 import {
   buildContactConsentGrant,
+  buildContactConsentDenial,
   isRespondiPayload,
   mapRespondiPayload,
   respondiLeadTitle,
@@ -286,12 +288,43 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // Contato: upsert por telefone (se houver) — reusa a coluna E.164 canônica.
   // is_merged_into null: contato mesclado não deve ser reaproveitado (o índice
   // único uniq_contacts_org_phone só cobre a linha ativa por telefone).
+  /**
+   * O que ESTE envio afirma sobre consentimento — ou nada, que é o caso mais
+   * importante de acertar.
+   *
+   * `detectedVia: "not_found"` significa que o formulário **não tem a pergunta**
+   * de autorização. O mapeador devolve `granted: false` ali (leitura defensiva
+   * correta: silêncio nunca vira concessão), mas isso não é a pessoa dizendo
+   * "não" — é ninguém tendo perguntado. Carimbar recusa nesse caso bloquearia
+   * a automação de todo formulário do Respondi que não faz a pergunta, que é
+   * exatamente o erro que este PR existe para não cometer, um nível acima.
+   *
+   * `null` = este envio não afirma nada, e a coluna fica como está (no default,
+   * ou no que um envio anterior gravou).
+   */
+  const consentDoEnvio = (() => {
+    if (!respondiMapped) return null;
+    if (respondiMapped.consent.detectedVia === "not_found") return null;
+    const formId = respondiMapped.custom_fields.respondi_form_id ?? null;
+    return respondiMapped.consent.granted
+      ? buildContactConsentGrant(formId)
+      : buildContactConsentDenial(formId);
+  })();
+
   let contactId: string | undefined;
+  // Nome do contato JÁ EXISTENTE que este envio casou (não o que acabou de
+  // criar — um contato novo nunca conflita com ele mesmo). `undefined` =
+  // ninguém existia antes; alimenta a checagem de conflito de identidade da
+  // classificação inicial (lib/leads/classificacao-inicial.ts).
+  let existingContactName: string | null | undefined;
+  // Nasceu neste request? O INSERT já grava o consentimento com a forma certa;
+  // a reconciliação abaixo existe só para quem JÁ era contato.
+  let contatoNasceuAqui = false;
   if (mapped.phone) {
     const selectActiveByPhone = () =>
       admin
         .from("contacts")
-        .select("id")
+        .select("id, name")
         .eq("organization_id", source.organization_id)
         .eq("phone_number", mapped.phone)
         .is("is_merged_into", null)
@@ -306,7 +339,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       if (!mapped.email) return null;
       return admin
         .from("contacts")
-        .select("id")
+        .select("id, name")
         .eq("organization_id", source.organization_id)
         .eq("email_normalized", mapped.email.trim().toLowerCase())
         .is("is_merged_into", null)
@@ -316,6 +349,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     const { data: existing } = await selectActiveByPhone();
     if (existing) {
       contactId = existing.id as string;
+      existingContactName = existing.name as string | null;
     } else {
       const { data: created, error: insertErr } = await admin
         .from("contacts")
@@ -326,14 +360,13 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
           email: mapped.email,
           source: "webhook",
           source_metadata: { webhook_source_id: source.id, ...mapped.source_metadata },
-          // Consentimento explícito só quando o Respondi confirmou concessão.
-          // Recusa NUNCA vira concessão por omissão: sem esta chave o INSERT
-          // usa o DEFAULT da coluna (tudo null == não concedido), que já é o
-          // estado correto — a recusa fica registrada no lead (custom_fields
-          // + atividade na timeline), não fabricada aqui como consentimento.
-          ...(respondiMapped?.consent.granted
-            ? { consent: buildContactConsentGrant(respondiMapped.custom_fields.respondi_form_id ?? null) }
-            : {}),
+          // Consentimento explícito só quando o Respondi confirmou concessão —
+          // recusa NUNCA vira concessão por omissão. E a recusa agora é
+          // GRAVADA, não omitida: o DEFAULT da coluna já é `granted_at: null`,
+          // então omitir deixava "nunca perguntamos" e "disse não" com a mesma
+          // forma no banco, e quem lê para decidir envio não tinha como separar
+          // os dois (ver buildContactConsentDenial).
+          ...(consentDoEnvio ? { consent: consentDoEnvio } : {}),
         })
         .select("id")
         .maybeSingle();
@@ -349,10 +382,12 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
           const { data: winnerByPhone } = await selectActiveByPhone();
           if (winnerByPhone) {
             contactId = winnerByPhone.id as string;
+            existingContactName = winnerByPhone.name as string | null;
           } else {
             const byEmail = selectActiveByEmail();
             const { data: winnerByEmail } = byEmail ? await byEmail : { data: null };
             contactId = (winnerByEmail?.id as string | undefined) ?? undefined;
+            existingContactName = (winnerByEmail?.name as string | null | undefined) ?? undefined;
           }
         } else {
           logger.error("[webhooks.inbound] contact insert failed", {
@@ -364,6 +399,75 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         }
       } else {
         contactId = (created?.id as string | undefined) ?? undefined;
+        contatoNasceuAqui = contactId !== undefined;
+      }
+    }
+  }
+
+  /**
+   * O contato que JÁ EXISTIA também recebe a resposta DESTE envio.
+   *
+   * O bloco acima só grava consentimento no INSERT. Quem já era contato — a
+   * segunda submissão da mesma pessoa, o lead que veio antes por outro canal —
+   * ficava com a resposta anterior, ou com nenhuma. Vale nos dois sentidos, e
+   * o pior é o segundo: quem CONCEDEU num envio e RECUSOU no seguinte
+   * continuaria marcado como tendo concedido.
+   *
+   * Escreve o objeto inteiro (as 3 finalidades), como o INSERT: a coluna é um
+   * mapa de finalidades e este webhook só capta `marketing`; `transactional` e
+   * `profiling` seguem null como o default. Só para envio do Respondi — um
+   * webhook genérico não pergunta consentimento e não tem o que afirmar.
+   *
+   * Falha aqui não derruba a captação: o contato já está resolvido e o lead
+   * ainda vai entrar. Perder o carimbo é ruim; perder a captação é pior. Fica
+   * no log, como as demais bordas desta rota.
+   */
+  if (consentDoEnvio && contactId && !contatoNasceuAqui) {
+    const { error: eConsent } = await admin
+      .from("contacts")
+      .update({ consent: consentDoEnvio })
+      .eq("id", contactId)
+      .eq("organization_id", source.organization_id);
+    if (eConsent) {
+      logger.error("[webhooks.inbound] consent write failed", {
+        webhookSourceId: source.id,
+        organizationId: source.organization_id,
+        contactId,
+        error: eConsent.message,
+      });
+    }
+  }
+
+  // Classificação inicial (só Respondi por ora — os motivos de
+  // desqualificação/revisão e o campo de orçamento são específicos do form
+  // "Imobiliárias e Incorporadoras"; um webhook genérico não tem
+  // `custom_fields.viable_investment_range` nem `consent` estruturado do
+  // mesmo jeito). Escreve em `custom_fields` do PRÓPRIO lead sendo criado —
+  // não dispara automação nenhuma, não manda mensagem: é dado, não ação.
+  // "revisao_humana" (conflito de identidade, spam, incoerência de
+  // investimento) também não bloqueia nada — quem controla envio é
+  // guarda-do-contato.ts, que não lê classificação nenhuma.
+  let classificacaoInicial: ResultadoClassificacaoInicial | null = null;
+  if (respondiMapped) {
+    classificacaoInicial = classificarLeadInicial({
+      customFields: respondiMapped.custom_fields,
+      phoneNormalizado: mapped.phone,
+      consentGranted: respondiMapped.consent.granted,
+      consentPerguntado: respondiMapped.consent.detectedVia !== "not_found",
+      contatoExistente: existingContactName !== undefined ? { name: existingContactName } : null,
+      nomeDoEnvio: mapped.name,
+    });
+    mapped.custom_fields.classificacao_inicial_status = classificacaoInicial.status;
+    if (classificacaoInicial.status === "desqualificado") {
+      mapped.custom_fields.classificacao_inicial_motivo = classificacaoInicial.motivo;
+    } else if (classificacaoInicial.status === "revisao_humana") {
+      mapped.custom_fields.classificacao_inicial_motivo = classificacaoInicial.motivo;
+    } else {
+      mapped.custom_fields.classificacao_inicial_classe = classificacaoInicial.classe;
+      if (classificacaoInicial.percentual !== null) {
+        mapped.custom_fields.classificacao_inicial_percentual = String(
+          Math.round(classificacaoInicial.percentual),
+        );
       }
     }
   }
@@ -473,6 +577,37 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         organizationId: source.organization_id,
         leadId: String(lead.id),
         error: atividade.error,
+      });
+    }
+  }
+
+  // Classificação inicial: desqualificação e pedido de revisão humana também
+  // são sinal, não ausência de sinal — mesmo raciocínio de consent_declined
+  // acima. "classificado" com uma classe (A/B/C/D/nao_avaliado) NÃO gera
+  // atividade própria: o valor já fica visível em custom_fields, e uma
+  // classificação normal não é um evento que precisa de linha na timeline.
+  if (classificacaoInicial && classificacaoInicial.status !== "classificado") {
+    const tipo = classificacaoInicial.status === "desqualificado" ? "lead_disqualified" : "lead_needs_review";
+    const atividadeClassificacao = await emitLeadActivity(admin, {
+      organizationId: source.organization_id,
+      leadId: String(lead.id),
+      contactId: contactId ?? null,
+      type: tipo,
+      sourceModule: "webhook",
+      sourceId: source.id,
+      actor: { type: "webhook_source", id: source.id },
+      reason:
+        classificacaoInicial.status === "desqualificado"
+          ? `Desqualificado na triagem inicial: ${classificacaoInicial.motivo}.`
+          : `Revisão humana pedida na triagem inicial: ${classificacaoInicial.motivo}.`,
+      payload: { webhook_source_id: source.id, motivo: classificacaoInicial.motivo },
+    });
+    if (!atividadeClassificacao.ok) {
+      logger.error("[webhooks.inbound] classificacao_inicial activity failed", {
+        webhookSourceId: source.id,
+        organizationId: source.organization_id,
+        leadId: String(lead.id),
+        error: atividadeClassificacao.error,
       });
     }
   }

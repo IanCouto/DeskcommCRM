@@ -19,6 +19,7 @@ import { adiarAteAJanelaAbrir } from "@/lib/automation/janela-do-canal";
 import { checkDailyLimit, espacarEnvio } from "@/lib/automation/throttle";
 import { reportarEnvio, type MensagemEnviada } from "@/lib/automation/desfecho-do-envio";
 import { dadosDoFormularioDoContexto } from "@/lib/automation/dados-do-formulario";
+import { checarGuardasDeContato } from "@/lib/automation/guarda-do-contato";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { gerarAbordagemDeFormulario } from "@/lib/agent-engine/agent/abordagem-de-formulario";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
@@ -45,12 +46,13 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
     return { type: TIPO, status: "failed", error: "missing_config" };
   }
 
-  const contact = ctx.context.contact as
-    | { id: string; is_blocked?: boolean; phone_number?: string | null }
-    | undefined;
-  if (!contact) return { type: TIPO, status: "skipped", detail: { reason: "no_contact" } };
-  if (contact.is_blocked) return { type: TIPO, status: "skipped", detail: { reason: "contact_blocked" } };
-  if (!contact.phone_number) return { type: TIPO, status: "skipped", detail: { reason: "no_phone" } };
+  // Guardas compartilhadas com send_whatsapp_message — ver guarda-do-contato.ts
+  // (esta ação nasceu sem o gate de consentimento que a irmã recebeu em
+  // 2026-08-25; a promessa do cabeçalho deste arquivo já dizia "mesmas
+  // guardas... importadas da irmã", e agora é verdade).
+  const guarda = checarGuardasDeContato(ctx);
+  if (!guarda.ok) return { type: TIPO, status: "skipped", detail: { reason: guarda.reason } };
+  const contact = guarda.contact;
 
   // ─── O texto ───────────────────────────────────────────────────────────────
   //
