@@ -63,7 +63,7 @@ export function AuditClient() {
       <Card className="p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Ação contém</label>
+            <label className="block text-xs text-muted-foreground">Ação contém</label>
             <Input
               value={actionInput}
               onChange={(e) => setActionInput(e.target.value)}
@@ -71,7 +71,7 @@ export function AuditClient() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Tipo de recurso</label>
+            <label className="block text-xs text-muted-foreground">Tipo de recurso</label>
             <Input
               value={resourceType}
               onChange={(e) => setResourceType(e.target.value)}
@@ -79,11 +79,11 @@ export function AuditClient() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">De</label>
+            <label className="block text-xs text-muted-foreground">De</label>
             <Input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Até</label>
+            <label className="block text-xs text-muted-foreground">Até</label>
             <Input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="flex items-end">

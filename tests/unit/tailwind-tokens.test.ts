@@ -172,6 +172,34 @@ describe("Tailwind 4 — `space-*` põe a margem no filho ANTERIOR", () => {
     ).toBe(true);
   });
 
+  it("nenhum `<label>` cru dentro de container espaçado fica sem display", () => {
+    // A mesma armadilha do `Label`, na forma solta. Um `<label>` escrito à mão
+    // como primeiro filho de um `space-y-*` perde o respiro do grupo — e o
+    // componente consertado não o alcança. Achados 10 assim na migração
+    // (audit, CapturasTab, onboarding/funil).
+    //
+    // A heurística é a janela de 3 linhas acima: em JSX o container espaçado
+    // abre logo antes do rótulo. Ela erra para menos (rótulo longe do
+    // container abridor passa), nunca para mais — e o complemento é a sonda
+    // `tests/sonda-tailwind-4-antes-depois.ts`, que mede na TELA quem é inline
+    // de verdade. Estática acha barato, sonda acha certo.
+    const DISPLAY = /\b(block|inline-block|flex|inline-flex|grid|inline-grid|table)\b/;
+    const suspeitos: string[] = [];
+    for (const f of listarFontes(["app", "components"])) {
+      if (!f.endsWith(".tsx")) continue;
+      const linhas = fs.readFileSync(f, "utf8").split("\n");
+      linhas.forEach((linha, i) => {
+        const m = /<label[^>]*className="([^"]*)"/.exec(linha);
+        if (!m || DISPLAY.test(m[1] ?? "")) return;
+        const contexto = linhas.slice(Math.max(0, i - 3), i).join("\n");
+        if (/space-[xy]-[0-9.]+/.test(contexto)) {
+          suspeitos.push(`${path.relative(RAIZ, f)}:${i + 1}`);
+        }
+      });
+    }
+    expect(suspeitos, "adicione `block` — senão a margem do grupo evapora").toEqual([]);
+  });
+
   it("nenhum componente de rótulo do design system fica sem display", () => {
     // Generaliza o de cima: qualquer `<label` cru que este projeto renderize
     // dentro de um grupo espaçado tem o mesmo problema. Aqui a guarda é sobre

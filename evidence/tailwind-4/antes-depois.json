@@ -65,7 +65,7 @@
   "03-onboarding-funil/claro": {
     "elementosComparados": 102,
     "soNoAntes": 0,
-    "tamanho": "1440x1453 → 1440x1445",
+    "tamanho": "1440x1453 → 1440x1449",
     "pixelIdentico": false,
     "mudancas": {
       "backgroundColor": {
@@ -281,7 +281,7 @@
   "03-onboarding-funil/escuro": {
     "elementosComparados": 102,
     "soNoAntes": 0,
-    "tamanho": "1440x1453 → 1440x1445",
+    "tamanho": "1440x1453 → 1440x1449",
     "pixelIdentico": false,
     "mudancas": {
       "backgroundColor": {
