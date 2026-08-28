@@ -177,6 +177,7 @@ jobs:
         wizard-do-funcionario.spec.ts mfa-opcional.spec.ts inbox-responder-citando.spec.ts
         agenda-tela-do-produto.spec.ts
         notificacoes-diz-o-que-falta.spec.ts
+        relogio-http-cron-externo.spec.ts
       # ⚠️ A ORDEM DESTA LISTA NÃO DECIDE A ORDEM DE EXECUÇÃO. O Playwright
       # ordena os arquivos por CAMINHO, não pela ordem em que são passados na
       # linha de comando. Medido no run 31838253496: `marca-logo.spec.ts` estava
@@ -225,6 +226,22 @@ jobs:
       # dizia de quem era o compromisso. Entra na PARTE_2 e não na 1 porque é AQUI que mora
       # o molde dela, `agente-organiza-operacao`; o comentário antigo dizia PARTE_1 e estava
       # errado sobre o próprio vizinho.
+      # `relogio-http-cron-externo` entrou na PARTE_1 em 2026-08-28, e a escolha da
+      # parte é o cuidado que ela exige: o tick que ela dispara é GLOBAL por
+      # natureza — ele roda as tarefas de minuto da instalação inteira, não só as
+      # da fixture dela. Um enrollment de outra spec que esteja vencido naquele
+      # instante É processado.
+      #
+      # Por que isso não quebra ninguém, medido e não presumido: as specs que
+      # criam enrollment e depois conferem `current_node_id` são
+      # `followup-journey`, `followup-queue` e `followup-dossie` (PARTE_2, outro
+      # processo, depois) e `followup-ramos` (PARTE_1). A ordem de execução é por
+      # CAMINHO — ver o bloco acima —, e `followup-ramos` < `relogio-http-...`,
+      # então ela já terminou quando o tick roda. Nenhuma spec posterior da
+      # PARTE_1 depende de enrollment parado.
+      #
+      # Se um dia uma spec de follow-up entrar na PARTE_1 com nome depois de
+      # `relogio-`, é aqui que se olha: ou ela vai para a PARTE_2, ou esta vai.
       SPECS_PARTE_2: >-
         agente-marca-consulta.spec.ts agenda-marcar-pela-tela.spec.ts agenda-remarcar-e-cancelar.spec.ts
         agenda-tipos-de-agendamento.spec.ts agenda-grade-interativa.spec.ts

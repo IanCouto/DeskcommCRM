@@ -684,6 +684,57 @@ esta jornada prende.
 | Troca sem navegar | 1 unit vermelho | **1** |
 | O slug compartilhado volta ao seed | o gate de seeds reprova nomeando os dois arquivos | **reprovou**, com `e2e-segunda-org ← seed-e2e-duas-organizacoes.ts + seed-e2e-funis.ts` |
 | Seed antigo restaurado (`git show HEAD~1`) e re-semeado | `agenda-escopo` reprova como no CI | **reprovou** com `não terminou` + `element(s) not found`, literal |
+## J18 — O follow-up anda em hospedagem sem agendador `[P0]`
+
+**Por que P0:** para quem **não tem** o `scheduler` da VPS — o plano gratuito da
+Vercel é o caso comum, e é o cenário inteiro do runbook
+[`vercel-hobby-relogio.md`](../runbooks/vercel-hobby-relogio.md) — o relógio
+externo não é conveniência: é o **único** motor do follow-up. E a falha dele é
+silenciosa: os follow-ups não andam, ninguém recebe erro, e a instalação parece
+saudável.
+
+**O que existia media TEXTO.** `tests/unit/relogio-hobby-workflow.test.ts`
+confere que o `.yml` cita o caminho do tick, a variável e o `exit 1` — ancora o
+contrato do arquivo, não prova que uma batida faz alguma coisa. Nenhum teste, em
+lugar nenhum, chegava a bater na rota. Era o item 2 da issue #366.
+
+**O emissor é externo de propósito.** `execFileSync("curl", …)` — outro
+processo, sem contexto de browser, sem cookie: é literalmente o comando que
+`comandoCurlDoRelogio()` gera e que o runbook manda colar no cron-job.org.
+`page.request` compartilharia o contexto do teste e provaria menos, já que a
+rota está em `PUBLIC_PATHS` justamente porque quem a chama não tem sessão.
+
+Spec: `tests/e2e/relogio-http-cron-externo.spec.ts` (`SPECS_PARTE_1`).
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J18.1 | Segredo errado é recusado | 403 **e** o enrollment não se move | PASS |
+| J18.2 | 1ª batida executa o `wait` | agenda a espera para o futuro, `steps_taken` sobe | PASS |
+| J18.3 | 2ª batida, vencido o prazo, avança | `current_node_id` chega ao nó final | PASS |
+
+**Duas batidas, e não uma — medido.** A primeira versão do caso esperava avanço
+numa batida só, e o run devolveu `{claimed:1, advanced:0, scheduled:1}`: um
+enrollment vencido *parado* num nó `wait` significa "chegou a hora de EXECUTAR o
+wait", e executar um wait é **agendar** a espera. O avanço só vem na batida
+depois do prazo — que é exatamente o que um cron externo faz, batendo de poucos
+em poucos minutos. O relógio do fixture é adiantado entre as duas porque o
+mínimo do `wait` é 5 min por regra de produto (`graph-schema.ts` recusa
+`duration_ms` abaixo de `300000`; com `1` o tick devolve `failed: 1`).
+
+**Sabotado, com a previsão declarada antes de rodar:**
+
+    auth aceita qualquer segredo   -> caso 1 vermelho, casos 2/3 verdes
+    tick responde 200 e não acha
+      o que avançar (claim vazio)  -> caso 1 verde, casos 2/3 vermelhos
+    restaurado                     -> 2 de 2
+
+**NÃO COBERTO, declarado:** o `.github/workflows/relogio.yml` em si — ele nasce
+desligado (`RELOGIO_LIGADO`) e quem o exercitaria é o Actions de um fork, não
+este job. O que está provado é que **a batida faz efeito**; que o agendador do
+GitHub dispara no horário é do GitHub.
+
+---
+
 ## J7 — Exploração completa `[P2]`
 
 Andar por TODAS as rotas navegáveis logado como admin e como agent: settings, contacts,
