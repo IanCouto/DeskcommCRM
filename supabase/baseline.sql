@@ -918,38 +918,17 @@ ALTER FUNCTION "public"."retrieve_top_k_chunks"("p_organization_id" "uuid", "p_k
 
 COMMENT ON FUNCTION "public"."retrieve_top_k_chunks"("p_organization_id" "uuid", "p_kb_version_id" "uuid", "p_embedding" "public"."vector", "p_k" integer, "p_threshold" real) IS 'Top-K cosine similarity over ai_chunks. SECURITY DEFINER + programmatic org_id filter. Caller must validate p_organization_id matches authenticated tenant.';
 
-
-
-CREATE OR REPLACE FUNCTION "public"."rls_auto_enable"() RETURNS "event_trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'pg_catalog'
-    AS $$
-DECLARE
-  cmd record;
-BEGIN
-  FOR cmd IN
-    SELECT *
-    FROM pg_event_trigger_ddl_commands()
-    WHERE command_tag IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
-      AND object_type IN ('table','partitioned table')
-  LOOP
-     IF cmd.schema_name IS NOT NULL AND cmd.schema_name IN ('public') AND cmd.schema_name NOT IN ('pg_catalog','information_schema') AND cmd.schema_name NOT LIKE 'pg_toast%' AND cmd.schema_name NOT LIKE 'pg_temp%' THEN
-      BEGIN
-        EXECUTE format('alter table if exists %s enable row level security', cmd.object_identity);
-        RAISE LOG 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
-      EXCEPTION
-        WHEN OTHERS THEN
-          RAISE LOG 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
-      END;
-     ELSE
-        RAISE LOG 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
-     END IF;
-  END LOOP;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."rls_auto_enable"() OWNER TO "postgres";
+-- `rls_auto_enable()` (event trigger candidato para ligar RLS automaticamente em
+-- toda CREATE TABLE) foi removida em 2026-08-27: nunca existiu um `CREATE EVENT
+-- TRIGGER ... EXECUTE FUNCTION rls_auto_enable()` em lugar nenhum do baseline ou
+-- das migrations, então a função nunca foi de fato invocada pelo Postgres — e,
+-- sendo do tipo `event_trigger`, também não pode ser chamada manualmente via
+-- SQL. Era uma promessa de proteção automática que o código nunca cumpriu; quem
+-- lesse o baseline podia concluir, errado, que tabela nova nascia com RLS
+-- ligada sozinha. A garantia real de isolamento por tabela é comportamental
+-- (tests/invariants/rls-isolation.test.ts + rls-completude-varredura.test.ts),
+-- não um event trigger. Ligar o event trigger de verdade é mudança de
+-- comportamento de runtime do banco e mereceria revisão própria — não esta.
 
 SET default_tablespace = '';
 
@@ -4656,12 +4635,6 @@ GRANT ALL ON FUNCTION "public"."midpoint"("p_prev" numeric, "p_next" numeric) TO
 REVOKE ALL ON FUNCTION "public"."retrieve_top_k_chunks"("p_organization_id" "uuid", "p_kb_version_id" "uuid", "p_embedding" "public"."vector", "p_k" integer, "p_threshold" real) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."retrieve_top_k_chunks"("p_organization_id" "uuid", "p_kb_version_id" "uuid", "p_embedding" "public"."vector", "p_k" integer, "p_threshold" real) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."retrieve_top_k_chunks"("p_organization_id" "uuid", "p_kb_version_id" "uuid", "p_embedding" "public"."vector", "p_k" integer, "p_threshold" real) TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "anon";
-GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
 
 
 
@@ -10202,7 +10175,6 @@ revoke execute on function public.fn_user_role_in(uuid) from public, anon;
 revoke execute on function public.fn_role_at_least(uuid, text) from public, anon;
 revoke execute on function public.fn_publish_ai_agent_version(uuid, uuid, uuid) from public, anon;
 revoke execute on function public.fn_emit_conversation_routing() from public, anon;
-revoke execute on function public.rls_auto_enable() from public, anon;
 
 -- ---- authenticated: definer volátil sem call site de sessão de usuário ----
 revoke execute on function public.fn_upsert_wa_contact(uuid, text, text, text, text, text) from authenticated;
@@ -10213,7 +10185,6 @@ revoke execute on function public.activate_kb_version(uuid, uuid) from authentic
 -- Funções de TRIGGER: ninguém as chama por RPC, e o disparo do trigger não
 -- consulta EXECUTE. O grant só existia por herança dos padrões do Postgres.
 revoke execute on function public.fn_emit_conversation_routing() from authenticated;
-revoke execute on function public.rls_auto_enable() from authenticated;
 
 -- ---- re-grant explícito: quem precisa continua podendo (probe positivo) ----
 grant execute on function public.fn_upsert_wa_contact(uuid, text, text, text, text, text) to service_role;
@@ -10222,7 +10193,6 @@ grant execute on function public.fn_mark_conversation_message(uuid, text, text, 
 grant execute on function public.fn_publish_ai_agent_version(uuid, uuid, uuid) to service_role;
 grant execute on function public.activate_kb_version(uuid, uuid) to service_role;
 grant execute on function public.fn_emit_conversation_routing() to service_role;
-grant execute on function public.rls_auto_enable() to service_role;
 -- Helpers de RLS: as policies são avaliadas com o papel de quem consulta, então
 -- `authenticated` PRECISA de EXECUTE — sem isto toda leitura logada quebra.
 grant execute on function public.fn_is_platform_admin() to authenticated, service_role;
