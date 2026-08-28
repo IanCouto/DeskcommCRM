@@ -1820,19 +1820,22 @@ async function executarTurnoDoAgente(
     search_knowledge: tool({
       ...AGENT_TOOL_DEFS.search_knowledge,
       execute: async ({ query }) => {
-        if (agentConfig?.activeKbVersionId == null) {
+        const fontes = agentConfig?.knowledgeSourceIds ?? [];
+        if (fontes.length === 0 && agentConfig?.activeKbVersionId == null) {
           return {
             ok: false,
-            error: { code: 'no_knowledge_base', message: 'este agente não tem base de conhecimento ativa — siga sem ela.' },
+            error: { code: 'no_knowledge_base', message: 'este agente não tem material de consulta habilitado — siga sem ele.' },
           };
         }
         const out = await searchKnowledge(pool, {
           organizationId: tenantId,
-          kbVersionId: agentConfig.activeKbVersionId,
+          knowledgeSourceIds: fontes,
+          kbVersionId: agentConfig?.activeKbVersionId ?? null,
           query,
-          topK: agentConfig.ragTopK,
-          threshold: agentConfig.ragSimilarityThreshold,
+          topK: agentConfig?.ragTopK ?? 5,
+          threshold: agentConfig?.ragSimilarityThreshold ?? 0.4,
           jobId: job.id,
+          agentId: agentConfig?.agentId ?? null,
         }, { log: runLog });
         if (out.ok && out.results.length > 0) {
           // As citações são montadas AQUI, pelo código, a partir do resultado
@@ -2396,9 +2399,12 @@ async function executarTurnoDoAgente(
     });
   }
 
-  // Fase 0 (convergência): a tool de conhecimento só entra quando o agente
-  // publicado tem KB ativa — def estática permanece no AGENT_TOOL_DEFS (prefixo).
-  if (agentConfig?.activeKbVersionId == null) {
+  // A tool de conhecimento só entra quando o agente publicado tem material para
+  // consultar. Desde a 0181 isso é a lista de materiais escolhida na tela; o
+  // ponteiro legado (`activeKbVersionId`) segue valendo para o clone que ainda
+  // não aplicou a migration. Ferramenta que só sabe responder "não tenho base"
+  // não é neutra: gasta contexto e degrada a escolha do modelo.
+  if ((agentConfig?.knowledgeSourceIds?.length ?? 0) === 0 && agentConfig?.activeKbVersionId == null) {
     delete rawTools.search_knowledge;
   }
 
