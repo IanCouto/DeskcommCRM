@@ -31,9 +31,6 @@ jobs:
           envs: DEPLOY_PATH
           script: |
             set -e
-            echo "tamanho do caminho: ${#DEPLOY_PATH}"
-            printf '%s' "$DEPLOY_PATH" | od -c | head -5
-            ls -la "$DEPLOY_PATH" || echo "NAO ACHOU O DIRETORIO"
             cd "$DEPLOY_PATH"
             docker compose -f docker-compose.prod.yml -f docker-compose.traefik.yml --env-file .env pull app worker scheduler
             docker compose -f docker-compose.prod.yml -f docker-compose.traefik.yml --env-file .env up -d app worker scheduler
