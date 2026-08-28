@@ -146,6 +146,27 @@ describe("Tailwind 4 — utilitários que mudaram de significado", () => {
     expect(culpados, "use `outline-hidden`").toEqual([]);
   });
 
+  it("não usa `shadow` puro — o v4 embute um preto fixo, cego ao tema escuro", () => {
+    // Irmão exato do caso `rounded` acima, e a razão de ele existir: o v3
+    // redefinia DOIS defaults contra token do produto —
+    // `borderRadius.DEFAULT: var(--radius-md)` e `boxShadow.DEFAULT:
+    // var(--shadow-sm)`. A migração varreu o primeiro e passou reto pelo
+    // segundo, porque `shadow` não tem hífen e não casa nenhuma varredura de
+    // `shadow-*`.
+    //
+    // Medido com o `@tailwindcss/cli` 4.3.3 contra este mesmo globals.css:
+    //   .shadow    → 0 1px 3px 0 rgb(0 0 0 / 0.1), …   ← literal, FIXO
+    //   .shadow-sm → var(--shadow-sm)                  ← o token, que muda no escuro
+    // O `--shadow-sm` do produto é rgba(20,18,14,…) no claro e rgba(0,0,0,.40)
+    // no escuro. `shadow` puro perde a diferença sem erro nenhum: build verde,
+    // aba ativa com sombra errada em 11 telas.
+    //
+    // Não dá para consertar pelo `@theme`: o `.shadow` do v4 é embutido com
+    // valor literal e o embutido vence — igual ao `rounded`.
+    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])shadow(?=[\s"'`])/g);
+    expect(culpados, "use `shadow-sm` (o `--shadow-sm` do produto) ou o grau explícito").toEqual([]);
+  });
+
   it("não usa `flex-shrink-*` / `flex-grow-*` — renomeados para `shrink-*` / `grow-*`", () => {
     const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])flex-(shrink|grow)(-\d+)?(?=[\s"'`])/g);
     expect(culpados, "use `shrink-*` / `grow-*`").toEqual([]);
