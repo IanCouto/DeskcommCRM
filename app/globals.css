@@ -609,6 +609,44 @@
     border-color: var(--color-border);
   }
 
+  /* ---- cursor de botão · reposto do preflight do Tailwind v3 -------------
+     NÃO É REDUNDANTE — não apague achando que o preflight já faz isto. Até a
+     v3 estas duas regras vinham de graça no `@tailwind base`
+     (`tailwindcss@3.4.19`, `src/css/preflight.css:339-353`, verbatim). O v4
+     as REMOVEU de propósito, para se alinhar ao default do navegador — e o
+     default do navegador para `<button>` é a SETA, não a mãozinha.
+
+     Sem este bloco, todo controle do produto que renda um `<button>` nativo
+     passa a mostrar a seta: `<Button>`, `SelectTrigger`, `TabsTrigger`,
+     `Switch`, os gatilhos de Dropdown/Popover/Tooltip/Dialog/Sheet/
+     AlertDialog e os `<button>` crus. Para recontar sem confiar neste texto:
+
+       git grep -o -F '<button' -- 'app/*.tsx' 'components/*.tsx' | wc -l
+
+     Por que aqui e não em `buttonVariants`: uma classe em `buttonVariants` só
+     alcança o que passa por `<Button>` (e por `AlertDialogAction`/`Cancel`,
+     que a reusam) — deixaria de fora todo o resto acima, além do `<button>`
+     que uma biblioteca de terceiro renderiza dentro da nossa árvore, que
+     classe nenhuma nossa tocaria.
+
+     A segunda regra é o par obrigatório da primeira, e vinha logo depois dela
+     no v3 pelo mesmo motivo: sem ela, botão DESABILITADO passa a convidar o
+     clique. Ela tem de vir DEPOIS — `:disabled` (0,1,0) empata em
+     especificidade com `[role="button"]` (0,1,0), e quem decide o empate é a
+     ordem no arquivo.
+
+     Nada aqui vence uma classe: `@layer base` perde para `@layer utilities`,
+     então os `cursor-default`, `cursor-not-allowed` e `disabled:cursor-*` que
+     já existem no código continuam mandando. */
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  :disabled {
+    cursor: default;
+  }
+
   html {
     color-scheme: light;
     /* Rede de segurança DE VERDADE contra scroll horizontal da PÁGINA — a

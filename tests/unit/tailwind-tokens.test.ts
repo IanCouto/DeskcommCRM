@@ -134,7 +134,27 @@ describe("Tailwind 4 — utilitários que mudaram de significado", () => {
     // `var(--radius-md)` (8px). O v4 não tem esse DEFAULT sobrescrevível — nem
     // por `@utility rounded`, que o embutido vence. Deixar `rounded` puro
     // encolhe o raio de 8px para 4px em silêncio.
-    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`])rounded(?=[\s"'`])/g);
+    //
+    // O `:` dentro do lookbehind é CARGA, não enfeite — quem "simplificar"
+    // essa classe de caractere reabre um buraco que este PR já pagou uma vez.
+    // Sem ele a guarda só enxerga `rounded` precedido de espaço ou aspas, e
+    // passa VERDE por `hover:rounded`, `md:rounded` e
+    // `data-[state=active]:rounded`, que encolhem o raio exatamente igual — só
+    // que sob condição, que é pior, porque nem na tela salta.
+    //
+    // A história é o argumento, e ela está no `git log` deste arquivo. As
+    // guardas de `outline-none` e `flex-*` têm o `:` desde o PRIMEIRO commit
+    // da migração (72d2ed4c): quem as escreveu já conhecia a variante. A linha
+    // do `rounded` — a troca principal do PR, 60 linhas varridas contra o
+    // merge-base 165e8f0f — nasceu sem ele. Depois o
+    // `data-[state=active]:shadow` de `components/ui/tabs.tsx` escapou por
+    // essa ausência exata e ganhou o commit 966d8f93, cujo assunto diz
+    // literalmente "a sombra da aba ativa tinha o mesmo defeito do `rounded`";
+    // a guarda nova nasceu COM o `:` e a do `rounded` continuou sem. Ou seja:
+    // consertou-se a instância e não a classe, e esta linha era a instância
+    // que sobrou. Para reprovar de novo, se alguém duvidar: plante
+    // `hover:rounded` num `className` de `components/` e rode este arquivo.
+    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])rounded(?=[\s"'`])/g);
     expect(culpados, "use `rounded-md` (8px) ou o grau explícito").toEqual([]);
   });
 
