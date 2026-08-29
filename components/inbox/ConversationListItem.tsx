@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
+import { rotuloDaFilaDoFollowup } from "@/lib/followup/rotulo-da-fila";
 
 interface Props {
   conversation: ConversationWithContact;
@@ -129,6 +130,7 @@ export function ConversationListItem({
     automaticoDaOrg,
   });
   const isAi = comando.quem === "automatico";
+  const rotuloFila = rotuloDaFilaDoFollowup(conversation.metadata);
 
   // O número DA EMPRESA por onde esta conversa chegou — não o do cliente. Com
   // dois canais é o que decide o tom da resposta e qual número a pessoa vê
@@ -207,6 +209,15 @@ export function ConversationListItem({
         </p>
 
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          {rotuloFila && (
+            <Badge
+              variant="secondary"
+              className="h-4 max-w-[10rem] truncate px-1.5 text-[10px]"
+              title={rotuloFila}
+            >
+              {rotuloFila}
+            </Badge>
+          )}
           {visibleTags.map((t) => (
             <Badge key={t} variant="secondary" className="h-4 px-1.5 text-[10px]">
               {t}

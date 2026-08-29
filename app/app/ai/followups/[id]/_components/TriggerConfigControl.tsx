@@ -25,10 +25,11 @@ import { useEtapasDeGatilho } from "@/hooks/followup/useEtapasDeGatilho";
  * Controle de `trigger_config` do pointer (Task 8.5) — como o fluxo começa.
  *
  * ⚠️ SÓ APARECE AQUI O QUE TEM MOTOR VIVO, e essa disciplina é a razão de o
- * controle ser confiável: `manual` (POST manual), `silence` (silence-sweep) e
- * `stage_change` (`lib/followup/gatilho-etapa.ts`, consumidor de
- * `lead.stage_changed` no `event_log`). `conversation_end` continua no schema
- * sem produtor — não é oferecido, e o publish o recusa se chegar por API crua.
+ * controle ser confiável: `manual` (POST manual), `silence` (silence-sweep),
+ * `stage_change` (`lib/followup/gatilho-etapa.ts`), `case_opened`, `webhook`,
+ * `first_contact` / `returning_after_silence` (`lib/followup/gatilho-contato.ts`).
+ * `conversation_end` continua no schema sem produtor — não é oferecido, e o
+ * publish o recusa se chegar por API crua.
  * Dado antigo com um kind que não sabemos armar é mostrado como
  * «(indisponível)» em vez de mentir «Manual».
  *
@@ -52,7 +53,14 @@ import { useEtapasDeGatilho } from "@/hooks/followup/useEtapasDeGatilho";
  * «poucos minutos», não «na hora» — prometer instantâneo seria o controle
  * mentindo sobre a própria função.
  */
-type TriggerKind = "manual" | "silence" | "stage_change" | "case_opened" | "webhook";
+type TriggerKind =
+  | "manual"
+  | "silence"
+  | "stage_change"
+  | "case_opened"
+  | "webhook"
+  | "first_contact"
+  | "returning_after_silence";
 
 interface TriggerFormState {
   kind: TriggerKind;
@@ -63,6 +71,7 @@ interface TriggerFormState {
 }
 
 const DEFAULT_THRESHOLD_MINUTES = 60;
+const DEFAULT_RETURNING_MINUTES = 1440;
 const MIN_THRESHOLD_MINUTES = 5;
 
 const KIND_LABEL: Record<TriggerKind, string> = {
@@ -77,6 +86,8 @@ const KIND_LABEL: Record<TriggerKind, string> = {
   // cercam o gatilho procuram por ela com `exact: true`.
   case_opened: "Agente pediu ajuda",
   webhook: "Automação (Webhooks)",
+  first_contact: "Primeiro contato",
+  returning_after_silence: "Retorno após silêncio",
 };
 
 function parseTriggerConfig(raw: Record<string, unknown>): TriggerFormState {
@@ -95,15 +106,22 @@ function parseTriggerConfig(raw: Record<string, unknown>): TriggerFormState {
           ? "case_opened"
           : raw.kind === "webhook"
             ? "webhook"
-            : "manual";
+            : raw.kind === "first_contact"
+              ? "first_contact"
+              : raw.kind === "returning_after_silence"
+                ? "returning_after_silence"
+                : "manual";
   const params =
     (raw.params as { threshold_minutes?: number; segments?: string[]; stage_id?: string } | undefined) ?? {};
+  const thresholdDefault =
+    kind === "returning_after_silence" ? DEFAULT_RETURNING_MINUTES : DEFAULT_THRESHOLD_MINUTES;
   return {
     kind,
     thresholdMinutes:
-      kind === "silence" && typeof params.threshold_minutes === "number"
+      (kind === "silence" || kind === "returning_after_silence") &&
+      typeof params.threshold_minutes === "number"
         ? params.threshold_minutes
-        : DEFAULT_THRESHOLD_MINUTES,
+        : thresholdDefault,
     segments: kind === "silence" && Array.isArray(params.segments) ? params.segments.join(", ") : "",
     stageId: kind === "stage_change" && typeof params.stage_id === "string" ? params.stage_id : "",
     cancelOnReply: raw.cancel_on_reply === true,
@@ -122,6 +140,14 @@ function toTriggerConfig(form: TriggerFormState): Record<string, unknown> {
   // todo fluxo armado assim.
   if (form.kind === "case_opened") return { kind: "case_opened", ...cancelOnReply };
   if (form.kind === "webhook") return { kind: "webhook", ...cancelOnReply };
+  if (form.kind === "first_contact") return { kind: "first_contact", ...cancelOnReply };
+  if (form.kind === "returning_after_silence") {
+    return {
+      kind: "returning_after_silence",
+      params: { threshold_minutes: form.thresholdMinutes },
+      ...cancelOnReply,
+    };
+  }
 
   const segments = form.segments
     .split(",")
@@ -152,6 +178,11 @@ function summaryLabel(
   }
   if (cfg.kind === "case_opened") return `${t("Gatilho")}: ${t("quando o agente pede ajuda")}`;
   if (cfg.kind === "webhook") return t("Disparado por uma automação em Webhooks");
+  if (cfg.kind === "first_contact") return `${t("Gatilho")}: ${t("Primeiro contato")}`;
+  if (cfg.kind === "returning_after_silence") {
+    const minutes = (cfg.params as { threshold_minutes?: number } | undefined)?.threshold_minutes;
+    return `Gatilho: Retorno após silêncio${typeof minutes === "number" ? ` (${minutes} min)` : ""}`;
+  }
   if (cfg.kind === "manual" || cfg.kind === undefined) return `${t("Gatilho")}: ${t("Manual")}`;
   // conversation_end de dados antigos (API crua) — sem UI própria, mas mostrado
   // com transparência em vez de mentir "Manual".
@@ -185,14 +216,17 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
   }, [triggerConfig, open]);
 
   const thresholdInvalid =
-    form.kind === "silence" && (!Number.isFinite(form.thresholdMinutes) || form.thresholdMinutes < MIN_THRESHOLD_MINUTES);
+    (form.kind === "silence" || form.kind === "returning_after_silence") &&
+    (!Number.isFinite(form.thresholdMinutes) || form.thresholdMinutes < MIN_THRESHOLD_MINUTES);
   // Gatilho de etapa sem etapa escolhida não é rascunho: é um fluxo que ficaria
   // ativo sem nunca disparar. O publish recusa; o Salvar recusa antes.
   const stageInvalid = form.kind === "stage_change" && form.stageId.trim().length === 0;
   const dirty =
     form.kind !== saved.kind ||
     form.cancelOnReply !== saved.cancelOnReply ||
-    (form.kind === "silence" && (form.thresholdMinutes !== saved.thresholdMinutes || form.segments !== saved.segments)) ||
+    ((form.kind === "silence" || form.kind === "returning_after_silence") &&
+      form.thresholdMinutes !== saved.thresholdMinutes) ||
+    (form.kind === "silence" && form.segments !== saved.segments) ||
     (form.kind === "stage_change" && form.stageId !== saved.stageId);
 
   const onSave = () => {
@@ -235,6 +269,8 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="manual">{t(KIND_LABEL.manual)}</SelectItem>
+                <SelectItem value="first_contact">{t(KIND_LABEL.first_contact)}</SelectItem>
+                <SelectItem value="returning_after_silence">{t(KIND_LABEL.returning_after_silence)}</SelectItem>
                 <SelectItem value="silence">{t(KIND_LABEL.silence)}</SelectItem>
                 <SelectItem value="stage_change">{t(KIND_LABEL.stage_change)}</SelectItem>
                 <SelectItem value="case_opened">{t(KIND_LABEL.case_opened)}</SelectItem>
@@ -242,6 +278,30 @@ export function TriggerConfigControl({ flowId, triggerConfig }: Props) {
               </SelectContent>
             </Select>
           </div>
+
+          {form.kind === "first_contact" && (
+            <p className="text-xs text-muted-foreground">
+              {t("Dispara na primeira mensagem que o contato envia nesta conversa — inclusive se o contato já existia por formulário ou webhook.")}
+            </p>
+          )}
+
+          {form.kind === "returning_after_silence" && (
+            <div className="space-y-2">
+              <Label htmlFor="trigger-returning-threshold">{t("Minutos sem mensagem do contato")}</Label>
+              <Input
+                id="trigger-returning-threshold"
+                type="number"
+                min={MIN_THRESHOLD_MINUTES}
+                value={form.thresholdMinutes}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, thresholdMinutes: Number(e.target.value) }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("Só dispara quando o contato escreve de novo depois desse silêncio (padrão 1440 = 24h).")}
+              </p>
+            </div>
+          )}
 
           {form.kind === "stage_change" && (
             <div className="space-y-2">

@@ -44,6 +44,7 @@ import { logger } from "@/lib/logger";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ehPedidoDeOptOut } from "@/lib/opt-out/deteccao";
 import { acelerarPipelineDeEventos } from "@/lib/dev/kick-local-pipeline";
+import { contatoTemFollowupVivo } from "@/lib/followup/enrollment-vivo";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -223,6 +224,16 @@ async function abrirDemanda(admin: Admin, entrada: EntradaDeMensagem): Promise<v
  */
 async function pedirDespachoDoAgente(admin: Admin, entrada: EntradaDeMensagem): Promise<void> {
   if (!entrada.messageId) return;
+
+  // Fluxo de follow-up vivo manda na conversa — o LLM não responde em paralelo.
+  if (await contatoTemFollowupVivo(admin, entrada.organizationId, entrada.contactId)) {
+    logger.info("pos-entrada: despacho do agente pulado — follow-up vivo", {
+      organization_id: entrada.organizationId,
+      contact_id: entrada.contactId,
+      origem: entrada.origem,
+    });
+    return;
+  }
 
   const { error } = await admin.rpc("emit_event" as never, {
     p_event_type: "ai_agent.dispatch_requested",

@@ -1125,6 +1125,21 @@ async function executarTurnoDoAgente(
     return;
   }
 
+  // Follow-up vivo: o fluxo manda; o LLM não responde em paralelo.
+  // SQL inline (agent-engine não importa lib/followup/*).
+  {
+    const { rows: fuRows } = await pool.query<{ n: string }>(
+      `select count(*)::text as n from followup_enrollments
+       where organization_id = $1 and contact_id = $2
+         and status = any($3::text[])`,
+      [tenantId, leadId, ['active', 'waiting_reply']],
+    );
+    if (Number(fuRows[0]?.n ?? 0) > 0) {
+      runLog.info('turno pulado — follow-up vivo neste contato', { kind: job.kind });
+      return;
+    }
+  }
+
   // JANELA ANTI-BAN (7h–22h por padrão, fuso do tenant): fora dela o turno é
   // ADIADO, não gasto.
   //

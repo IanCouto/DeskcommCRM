@@ -36,6 +36,8 @@ import {
 } from "./node-handlers";
 import { coletarEsperasAdaptativas, type EsperaAdaptativa, type TimingPlan } from "./timing-plan";
 import { interpolarDestino, persistirRespostaFollowupSupabase } from "./persistir-resposta";
+import { textoNumeradoDasEscolhas } from "./escolhas";
+import { handoffDaFilaDoFollowup } from "./handoff-da-fila";
 
 const MAX_STEPS = 80;
 const CLAIM_LEASE_SECONDS = 120;
@@ -69,6 +71,14 @@ export interface FollowupJobRequest {
     prompt_hint?: string;
     /** action (mode 'text') — corpo pronto; o turno envia sem chamar o modelo. */
     fixed_body?: string;
+    /** action (mode 'choices') — botões nativos + fallback numerado no fixed_body. */
+    choices?: {
+      header?: string;
+      footer?: string;
+      buttons: Array<{ id: string; text: string }>;
+    };
+    /** Nome do contato para interpolar {{nome}} / {{primeiro_nome}} no texto. */
+    contact_name?: string | null;
     /** action (mode 'template') — id em `message_templates`; o turno carrega o corpo e envia sem modelo. */
     template_id?: string;
     volta_index?: number;
@@ -102,6 +112,21 @@ export interface AdminClient {
     /** Só mensagens deste instante em diante — senão o SIM da pergunta anterior casa no próximo `match_reply`. */
     naoAntesDe?: string | null,
   ): Promise<string | null>;
+  /** Clique nativo (`metadata.button_id`) do último inbound, se houver. */
+  loadLastInboundButtonId(
+    orgId: string,
+    contactId: string,
+    naoAntesDe?: string | null,
+  ): Promise<string | null>;
+  /** action mode=handoff — passa a conversa à fila com rótulo. */
+  handoffToQueue(input: {
+    organization_id: string;
+    contact_id: string;
+    conversation_id: string | null;
+    queue_label: string;
+    enrollment_id: string;
+    inactivity_message?: string;
+  }): Promise<void>;
   /** Inserts the step's audit event; `inserted:false` means idempotency_key already existed (23505 replay). */
   insertEnrollmentEvent(event: {
     organization_id: string;
@@ -162,6 +187,8 @@ function eventTypeFor(result: NodeResult): string {
       return result.purpose === "classify" ? "classify_enqueued" : "turn_enqueued";
     case "recheck":
       return "action_recheck";
+    case "handoff":
+      return "handoff_to_queue";
     case "complete":
       return "flow_completed";
     // `dead`/`fail` never reach the event-insert (handled at the top of applyResult) — cases
@@ -192,6 +219,8 @@ function eventPayload(result: NodeResult): Record<string, unknown> {
       return { next_eval_at: result.next_eval_at.toISOString() };
     case "enqueue_turn":
       return { purpose: result.purpose, wake_status: result.wake_status };
+    case "handoff":
+      return { queue_label: result.queue_label };
     case "complete":
       return { outcome: result.outcome, cancel_reason: result.cancel_reason ?? null };
     case "dead":
@@ -217,18 +246,35 @@ function turnPayloadExtras(
   node: FlowNode,
   smartWaits: EsperaAdaptativa[],
   events: EnrollmentEventRef[] = [],
+  contactName?: string | null,
 ): Partial<FollowupJobRequest["payload"]> {
   if (node.type === "action" && node.config.mode === "ai_message") {
     return { prompt_hint: interpolarVolta(node.config.prompt_hint, events) };
   }
   if (node.type === "action" && node.config.mode === "text") {
-    return { fixed_body: interpolarVolta(node.config.body, events) };
+    return {
+      fixed_body: interpolarVolta(node.config.body, events),
+      contact_name: contactName ?? null,
+    };
+  }
+  if (node.type === "action" && node.config.mode === "choices") {
+    const body = interpolarVolta(node.config.body, events);
+    return {
+      fixed_body: textoNumeradoDasEscolhas(body, node.config.buttons),
+      choices: {
+        ...(node.config.header ? { header: node.config.header } : {}),
+        ...(node.config.footer ? { footer: node.config.footer } : {}),
+        buttons: node.config.buttons,
+      },
+      contact_name: contactName ?? null,
+    };
   }
   if (node.type === "action" && node.config.mode === "template") {
     const volta = latestRepeatIndex(events);
     return {
       template_id: node.config.template_id,
       ...(volta ? { volta_index: volta.index, volta_total: volta.total } : {}),
+      contact_name: contactName ?? null,
     };
   }
   if (node.type === "ai_classify") {
@@ -305,7 +351,7 @@ async function applyHandlerFailure(
 }
 
 function tallyOutcome(result: NodeResult, summary: TickSummary): void {
-  if (result.kind === "advance" || result.kind === "complete") {
+  if (result.kind === "advance" || result.kind === "complete" || result.kind === "handoff") {
     summary.advanced++;
   } else if (result.kind === "wait" || result.kind === "enqueue_turn" || result.kind === "recheck") {
     summary.scheduled++;
@@ -321,6 +367,7 @@ async function applyResult(
   smartWaits: EsperaAdaptativa[] = [],
   events: EnrollmentEventRef[] = [],
   respostaParaGravar: string | null = null,
+  contactName: string | null = null,
 ): Promise<void> {
   const { db, clock, enqueueJob } = deps;
 
@@ -417,9 +464,30 @@ async function applyResult(
             followup_enrollment_id: enrollment.id,
             node_id: node.id,
             purpose: result.purpose,
-            ...turnPayloadExtras(node, smartWaits, events),
+            ...turnPayloadExtras(node, smartWaits, events, contactName),
             ...(result.fixed_body ? { fixed_body: result.fixed_body } : {}),
           },
+        });
+      }
+      break;
+    }
+    case "handoff": {
+      patch.current_node_id = enrollment.current_node_id;
+      patch.status = "cancelled";
+      patch.outcome = "handoff";
+      patch.cancel_reason = result.queue_label;
+      patch.next_eval_at = null;
+      patch.completed_at = clock().toISOString();
+      if (!isReplay) {
+        await db.handoffToQueue({
+          organization_id: enrollment.organization_id,
+          contact_id: enrollment.contact_id,
+          conversation_id: enrollment.conversation_id,
+          queue_label: result.queue_label,
+          enrollment_id: enrollment.id,
+          ...(result.inactivity_message
+            ? { inactivity_message: result.inactivity_message }
+            : {}),
         });
       }
       break;
@@ -578,6 +646,7 @@ async function processEnrollment(
   }
 
   let lastInboundBody: string | undefined;
+  let lastInboundButtonId: string | null = null;
   if (textoInbound && node.type === "match_reply") {
     lastInboundBody = textoInbound;
   } else if (
@@ -593,6 +662,11 @@ async function processEnrollment(
         null,
         enrollment.updated_at,
       )) ?? "";
+    lastInboundButtonId = await db.loadLastInboundButtonId(
+      enrollment.organization_id,
+      enrollment.contact_id,
+      enrollment.updated_at,
+    );
     if (node.type === "match_reply" && lastInboundBody.trim()) {
       wokeEarly = true;
     }
@@ -610,6 +684,7 @@ async function processEnrollment(
     waitElapsed,
     wokeEarly,
     lastInboundBody,
+    lastInboundButtonId,
     actionEnqueued,
     actionRecheckCount,
     actionCompleted,
@@ -629,6 +704,7 @@ async function processEnrollment(
     smartWaits,
     events,
     node.type === "match_reply" && wokeEarly ? (lastInboundBody ?? "").trim() || null : null,
+    lead.contact_name ?? null,
   );
 }
 
@@ -732,6 +808,32 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       const { data, error } = await q.order("sent_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw new Error(error.message);
       return typeof data?.body === "string" ? data.body : null;
+    },
+    async loadLastInboundButtonId(orgId, contactId, naoAntesDe) {
+      const ids = await idsDoContatoEGemeos(admin, orgId, contactId);
+      let q = admin
+        .from("messages")
+        .select("metadata")
+        .eq("organization_id", orgId)
+        .in("contact_id", ids)
+        .eq("direction", "inbound");
+      if (naoAntesDe) q = q.gte("sent_at", naoAntesDe);
+      const { data, error } = await q.order("sent_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(error.message);
+      const meta = data?.metadata;
+      if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+      const id = (meta as Record<string, unknown>).button_id;
+      return typeof id === "string" && id.trim() ? id.trim() : null;
+    },
+    async handoffToQueue(input) {
+      await handoffDaFilaDoFollowup(admin, {
+        organizationId: input.organization_id,
+        contactId: input.contact_id,
+        conversationId: input.conversation_id,
+        queueLabel: input.queue_label,
+        enrollmentId: input.enrollment_id,
+        inactivityMessage: input.inactivity_message,
+      });
     },
     async loadEnrollmentEvents(enrollmentId) {
       const { data, error } = await admin

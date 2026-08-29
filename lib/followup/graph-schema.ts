@@ -223,6 +223,31 @@ export const actionConfigSchema = z.discriminatedUnion('mode', [
     mode: z.literal('template'),
     template_id: z.string().uuid(),
   }),
+  z.strictObject({
+    mode: z.literal('choices'),
+    body: z.string().min(1).max(4000),
+    header: z.string().max(60).optional(),
+    footer: z.string().max(60).optional(),
+    buttons: z
+      .array(
+        z.strictObject({
+          id: z
+            .string()
+            .min(1)
+            .max(64)
+            .regex(/^[a-z][a-z0-9_]*$/i, 'id do botão: letras, números e underscore'),
+          text: z.string().min(1).max(20),
+        }),
+      )
+      .min(1)
+      .max(3),
+  }),
+  z.strictObject({
+    mode: z.literal('handoff'),
+    queue_label: z.string().trim().min(1).max(80),
+    /** Mensagem do watch pós-fila (24h sem toque). Default genérico no motor. */
+    inactivity_message: z.string().trim().min(1).max(1000).optional(),
+  }),
 ]);
 
 /**
@@ -239,6 +264,7 @@ export const conditionCheckSchema = z.strictObject({
     'tag',
     'steps_taken',
     'last_outcome',
+    'contact_name',
   ]),
   op: z.enum(['eq', 'neq', 'gte', 'lte', 'contains']),
   value: z.union([z.string(), z.number()]),

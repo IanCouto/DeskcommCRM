@@ -130,6 +130,23 @@ async function handle(req: NextRequest): Promise<Response> {
     logger.error("[followup-flow-worker.cron] runSilenceSweep threw", { error: detail, requestId });
   }
 
+  try {
+    const { runFollowupInactivityWatch } = await import("@/lib/followup/inactivity-watch");
+    const watch = await runFollowupInactivityWatch(admin);
+    if (watch.sent > 0) {
+      void audit({
+        action: "followup.inactivity_watch_run",
+        organizationId: null,
+        bypassedRls: true,
+        metadata: { ...watch },
+        requestId,
+      });
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    logger.error("[followup-flow-worker.cron] inactivity watch threw", { error: detail, requestId });
+  }
+
   return ok(summary, { requestId });
 }
 

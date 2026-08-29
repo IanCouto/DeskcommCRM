@@ -664,6 +664,9 @@ export async function sendMessageHandler(
           },
         }));
       } else {
+        const choicesMeta = outboundMetadata.choices as
+          | { header?: string; footer?: string; buttons: Array<{ id: string; text: string }> }
+          | undefined;
         ({ externalId } = await adapter.send({
           organizationId: ctx.organization_id,
           sessionRef: resolveSessionRef(c.channel_sessions),
@@ -672,6 +675,7 @@ export async function sendMessageHandler(
           kind: input.type,
           body: input.body ?? "",
           replyToExternalId: citada?.external_id ?? null,
+          ...(choicesMeta?.buttons?.length ? { choices: choicesMeta } : {}),
         }));
       }
       await removerEcoDoProprioEnvio(

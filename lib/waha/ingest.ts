@@ -21,6 +21,7 @@ import { extrairAtribuicaoWaha } from "@/lib/waha/atribuicao-de-anuncio";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
 import type { WahaEnvelope, WahaPayload } from "@/lib/waha/envelope";
+import { extrairRespostaDeBotao } from "@/lib/waha/button-reply";
 import { bareWaMessageId, chatIdFromWaMessageId } from "@/lib/waha/message-id";
 import { logger } from "@/lib/logger";
 
@@ -271,6 +272,8 @@ function notifyNameOf(p: WahaPayload): string | null {
 /** Corpo textual: WAHA nem sempre preenche `body` em cartões de contato NOWEB. */
 function bodyOf(p: WahaPayload): string | null {
   if (p.body) return p.body;
+  const clique = extrairRespostaDeBotao(p);
+  if (clique.displayText) return clique.displayText;
   const msg = p._data?.message;
   if (!msg || typeof msg !== "object") return null;
   // `_data.message` é `unknown` no schema Zod (`lib/waha/envelope.ts`), de
@@ -283,7 +286,16 @@ function bodyOf(p: WahaPayload): string | null {
     if (o.vcard) return o.vcard;
     if (o.displayName) return o.displayName;
   }
+  // Clique sem texto visível: ainda assim é mensagem — o id vai em metadata.
+  if (clique.buttonId) return clique.buttonId;
   return null;
+}
+
+function metadataDoInbound(p: WahaPayload): Record<string, unknown> {
+  const base: Record<string, unknown> = { raw_type: p.type, ack_name: p.ackName };
+  const clique = extrairRespostaDeBotao(p);
+  if (clique.buttonId) base.button_id = clique.buttonId;
+  return base;
 }
 
 /**
@@ -490,8 +502,10 @@ async function handleInbound(
   if (parsed.kind === "group") return; // grupos não fazem binding CRM
   if (!p.id) return;
   // WAHA emite eventos vazios p/ status/read-receipt/presence — não viram mensagem.
+  // Clique de botão sem `body` ainda conta: `bodyOf` / `extrairRespostaDeBotao`.
   const texto = bodyOf(p);
-  if (!texto && !mediaUrlOf(p) && !p.hasMedia) return;
+  const clique = extrairRespostaDeBotao(p);
+  if (!texto && !clique.buttonId && !mediaUrlOf(p) && !p.hasMedia) return;
   // Daqui para baixo era para ser uma mensagem de verdade: se o chat não é
   // endereçável, PERDEMOS uma — e isso precisa ser contável. O aviso fica depois
   // das guardas acima de propósito; antes delas, todo evento de presença viraria
@@ -543,7 +557,7 @@ async function handleInbound(
       sent_via: "external_device",
       sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
       delivered_at: now,
-      metadata: { raw_type: p.type, ack_name: p.ackName },
+      metadata: metadataDoInbound(p),
     })
     .select("id")
     .maybeSingle();

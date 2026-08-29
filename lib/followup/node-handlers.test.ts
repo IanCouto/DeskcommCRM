@@ -852,6 +852,21 @@ describe("processNode — match_reply", () => {
     expect(result).toMatchObject({ kind: "advance", next_node_id: "no-preco" });
   });
 
+  it("wokeEarly: casa metadata.button_id com o id do ramo", () => {
+    const result = processNode({
+      node: matchNode(),
+      edges,
+      enrollment: enrollment(),
+      lead: lead(),
+      clock,
+      waitElapsed: true,
+      wokeEarly: true,
+      lastInboundBody: "qualquer texto do botão",
+      lastInboundButtonId: "br_sim",
+    });
+    expect(result).toMatchObject({ kind: "advance", next_node_id: "no-sim" });
+  });
+
   it("wokeEarly: no match falls through always/else", () => {
     const result = processNode({
       node: matchNode(),

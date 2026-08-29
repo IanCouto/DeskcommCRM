@@ -91,7 +91,12 @@ export async function enviarTextoFixoPendente(
           actor: { type: "webhook_source", id: enrollmentId },
           requestId: `followup:${job.id}`,
         },
-        { conversation_id: conversationId, type: "text", body },
+        {
+          conversation_id: conversationId,
+          type: "text",
+          body,
+          ...(payload.choices ? { metadata: { choices: payload.choices } } : {}),
+        },
       );
       enviados++;
       try {

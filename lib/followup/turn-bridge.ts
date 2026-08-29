@@ -271,6 +271,64 @@ export function createPgAdminClient(pool: pg.Pool): TurnBridgeAdminClient {
       const body = rows[0]?.body;
       return typeof body === "string" ? body : null;
     },
+    async loadLastInboundButtonId(orgId, contactId, naoAntesDe) {
+      const params: unknown[] = [orgId, contactId];
+      const desde = naoAntesDe ? "and sent_at >= $3" : "";
+      if (naoAntesDe) params.push(naoAntesDe);
+      const { rows } = await pool.query<{ metadata: unknown }>(
+        `select metadata from messages
+         where organization_id = $1 and contact_id = $2 and direction = 'inbound' ${desde}
+         order by sent_at desc limit 1`,
+        params,
+      );
+      const meta = rows[0]?.metadata;
+      if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+      const id = (meta as Record<string, unknown>).button_id;
+      return typeof id === "string" && id.trim() ? id.trim() : null;
+    },
+    async handoffToQueue(input) {
+      // Espelha o essencial de triggerHandoff + rótulo na metadata (sem
+      // supabase-js — este adapter é pg puro do worker).
+      let conversationId = input.conversation_id;
+      if (!conversationId) {
+        const { rows } = await pool.query<{ id: string }>(
+          `select id from conversations
+           where organization_id = $1 and contact_id = $2
+           order by last_inbound_at desc nulls last limit 1`,
+          [input.organization_id, input.contact_id],
+        );
+        conversationId = rows[0]?.id ?? null;
+      }
+      if (!conversationId) return;
+
+      await pool.query(
+        `update conversations set
+           status = 'pending',
+           bot_silenced_until = 'infinity',
+           last_handoff_at = now(),
+           last_handoff_reason = 'followup',
+           active_ai_agent_id = null,
+           active_intent = null,
+           active_agent_set_at = null,
+           metadata = coalesce(metadata, '{}'::jsonb)
+             || jsonb_build_object(
+               'followup_queue_label', $3::text,
+               'followup_inactivity_watch_until', (now() + interval '24 hours')::text,
+               'followup_inactivity_sent', false,
+               'followup_inactivity_message', coalesce(
+                 nullif($4::text, ''),
+                 'Esta conversa ficou inativa. O atendimento será redirecionado para a fila.'
+               )
+             )
+         where id = $1 and organization_id = $2`,
+        [
+          conversationId,
+          input.organization_id,
+          input.queue_label,
+          input.inactivity_message ?? "",
+        ],
+      );
+    },
     async loadEnrollmentEvents(enrollmentId) {
       const { rows } = await pool.query(
         `select node_id, idempotency_key, event_type, payload from followup_enrollment_events where enrollment_id = $1 order by created_at asc`,

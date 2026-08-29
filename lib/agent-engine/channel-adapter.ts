@@ -36,6 +36,12 @@ export interface ChannelSendInput {
     /** Valor por slot, chaveado por `slotKey` — a mesma chave da tela. */
     values: Record<string, string>;
   };
+  /** Botões de escolha (WAHA). O `body` já traz o fallback numerado. */
+  choices?: {
+    header?: string;
+    footer?: string;
+    buttons: Array<{ id: string; text: string }>;
+  };
 }
 
 /**

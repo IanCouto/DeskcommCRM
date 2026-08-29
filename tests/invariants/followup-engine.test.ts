@@ -133,6 +133,12 @@ function pgAdminClient(opts?: { failInboxTimes?: number }): AdminClient {
       const body = rows[0]?.body;
       return typeof body === "string" ? body : null;
     },
+    async loadLastInboundButtonId() {
+      return null;
+    },
+    async handoffToQueue() {
+      /* no-op nos testes de engine */
+    },
     async loadEnrollmentEvents(enrollmentId): Promise<EnrollmentEventRef[]> {
       const { rows } = await pool.query<EnrollmentEventRef>(
         `select node_id, idempotency_key, event_type, payload from followup_enrollment_events where enrollment_id = $1 order by created_at asc`,

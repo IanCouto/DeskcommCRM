@@ -54,6 +54,18 @@ export const triggerConfigSchema = z.discriminatedUnion("kind", [
     params: z.strictObject({}),
     ...CANCEL_ON_REPLY,
   }),
+  z.strictObject({
+    kind: z.literal("first_contact"),
+    params: z.strictObject({}).optional(),
+    ...CANCEL_ON_REPLY,
+  }),
+  z.strictObject({
+    kind: z.literal("returning_after_silence"),
+    params: z.strictObject({
+      threshold_minutes: z.number().int().min(5).max(10_080),
+    }),
+    ...CANCEL_ON_REPLY,
+  }),
 ]);
 export type TriggerConfig = z.infer<typeof triggerConfigSchema>;
 

@@ -20,6 +20,7 @@ import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
+import { rotuloDaFilaDoFollowup } from "@/lib/followup/rotulo-da-fila";
 
 interface Props {
   conversation: ConversationWithContact;
@@ -62,6 +63,7 @@ export function ConversationHeader({ conversation }: Props) {
   const status = conversation.status;
   const isMineAssigned = conversation.assigned_to_user_id === user.id;
   const isOpen = status === "open" || conversation.assigned_to_user_id == null;
+  const rotuloFila = rotuloDaFilaDoFollowup(conversation.metadata);
 
   /**
    * QUEM MANDA, uma pergunta com uma resposta.
@@ -135,6 +137,16 @@ export function ConversationHeader({ conversation }: Props) {
           <Badge variant="outline" className="h-4 px-1.5 text-[10px]">
             {t(STATUS_LABEL[status] ?? status)}
           </Badge>
+          {rotuloFila && (
+            <Badge
+              variant="secondary"
+              className="h-4 max-w-[14rem] truncate px-1.5 text-[10px]"
+              data-testid="badge-rotulo-fila-followup"
+              title={rotuloFila}
+            >
+              {rotuloFila}
+            </Badge>
+          )}
           {/* Ao lado do estado, não escondido num painel: a pergunta "dá para
               escrever agora?" se faz ANTES de digitar, não depois de receber um
               `failed` com um código de cinco dígitos. */}

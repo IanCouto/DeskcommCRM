@@ -367,6 +367,46 @@ export class WahaClient {
   }
 
   /**
+   * Botões de resposta rápida (`POST /api/sendButtons`). Frágeis no WhatsApp —
+   * o chamador DEVE ter fallback em texto. Máximo 3 botões `reply`.
+   */
+  async sendButtons(
+    session: string,
+    chatId: string,
+    input: {
+      body: string;
+      header?: string;
+      footer?: string;
+      buttons: Array<{ id: string; text: string }>;
+    },
+  ): Promise<unknown> {
+    const res = await fetch(`${this.baseUrl}/api/sendButtons`, {
+      method: "POST",
+      headers: {
+        "X-Api-Key": this.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        session,
+        chatId,
+        body: input.body,
+        ...(input.header ? { header: input.header } : {}),
+        ...(input.footer ? { footer: input.footer } : {}),
+        buttons: input.buttons.map((b) => ({
+          type: "reply" as const,
+          id: b.id,
+          text: b.text,
+        })),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`waha_${res.status}: ${body.slice(0, 200)}`);
+    }
+    return res.json();
+  }
+
+  /**
    * Confere se o número existe no WhatsApp e devolve o chatId canônico.
    * Obrigatório antes de vcard em BR — o nono dígito do CRM nem sempre bate com o wa_id.
    */

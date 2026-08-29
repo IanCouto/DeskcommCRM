@@ -204,6 +204,24 @@ export const wahaAdapter: ChannelAdapter = {
         to,
         wahaSendPlanFor(envelope.kind, envelope.media),
       );
+    } else if (envelope.choices?.buttons?.length) {
+      // Botões são frágeis no WhatsApp: falha → texto do `body` (já numerado
+      // pelo chamador). Nunca deixa o enrollment pendurado sem mensagem.
+      try {
+        res = await client.sendButtons(envelope.sessionRef, to, {
+          body: envelope.body ?? "",
+          ...(envelope.choices.header ? { header: envelope.choices.header } : {}),
+          ...(envelope.choices.footer ? { footer: envelope.choices.footer } : {}),
+          buttons: envelope.choices.buttons.slice(0, 3),
+        });
+      } catch {
+        res = await client.sendMessage(
+          envelope.sessionRef,
+          to,
+          envelope.body ?? "",
+          envelope.replyToExternalId,
+        );
+      }
     } else {
       res = await client.sendMessage(
         envelope.sessionRef,

@@ -3,6 +3,8 @@
  * `engine.ts` owns the tick/DB orchestration; this file only decides "given
  * this node + these facts, what happens next" so it's testable without Postgres.
  */
+import { ehIdentificadorTecnico } from "@/lib/contacts/rotulo-do-contato";
+import { casarEscolha } from "./escolhas";
 import { NO_REPLY_BRANCH_ID, REPEAT_BODY_BRANCH_ID, REPEAT_DONE_BRANCH_ID, nodeBranches } from "./graph-schema";
 import type { FlowEdge, FlowNode, ReplySaveTo } from "./graph-schema";
 import { parseReplyCount } from "./parse-count";
@@ -84,6 +86,8 @@ export type NodeResult =
       wake_status: "active" | "waiting_reply";
       fixed_body?: string;
     }
+  /** action mode=handoff — o engine chama triggerHandoff e encerra o enrollment. */
+  | { kind: "handoff"; queue_label: string; inactivity_message?: string }
   // action recheck: the send turn is already in flight; stay put WITHOUT re-enqueuing (anti-dup-send).
   | { kind: "recheck"; next_eval_at: Date }
   // action dead-man: the turn never completed after MAX_ACTION_RECHECKS — give up (engine routes to markDead).
@@ -282,9 +286,24 @@ export function resolveWaitPhase(events: EnrollmentEventRef[], nodeId: string, s
 }
 
 function evaluateCheck(
-  check: { field: "lead_stage" | "tag" | "steps_taken" | "last_outcome"; op: "eq" | "neq" | "gte" | "lte" | "contains"; value: string | number },
+  check: {
+    field: "lead_stage" | "tag" | "steps_taken" | "last_outcome" | "contact_name";
+    op: "eq" | "neq" | "gte" | "lte" | "contains";
+    value: string | number;
+  },
   lead: LeadFacts,
 ): boolean {
+  if (check.field === "contact_name") {
+    const bruto = (lead.contact_name ?? "").trim();
+    const actual =
+      bruto === "" || ehIdentificadorTecnico(bruto) ? "" : bruto;
+    const expected = String(check.value);
+    if (check.op === "eq") return actual === expected;
+    if (check.op === "neq") return actual !== expected;
+    if (check.op === "contains") return actual.includes(expected);
+    return false;
+  }
+
   const actual: string | number | null | string[] =
     check.field === "lead_stage" ? lead.lead_stage
     : check.field === "tag" ? lead.tags
@@ -344,6 +363,8 @@ export function processNode(input: {
   wokeEarly?: boolean;
   /** Last inbound `messages.body` for this contact/conversation — engine loads on `match_reply` + wokeEarly. */
   lastInboundBody?: string;
+  /** `messages.metadata.button_id` do último inbound — clique nativo do WhatsApp. */
+  lastInboundButtonId?: string | null;
   /** action occupancy guard: a `turn_enqueued` event for THIS stay on the action node already
    *  exists (an entry/recheck happened before). Resolved by the engine via `resolveWaitPhase`
    *  — same prior-step-event check as `wait`. When true, the send turn is in flight: DON'T
@@ -389,6 +410,7 @@ export function processNode(input: {
     repeatTotal,
     proximo,
   } = input;
+  const lastInboundButtonId = input.lastInboundButtonId ?? null;
 
   switch (node.type) {
     case "trigger": {
@@ -532,11 +554,26 @@ export function processNode(input: {
         const hit =
           node.config.save_to !== undefined
             ? undefined
-            : node.config.branches.find((b) => {
-                const needle = b.pattern.trim().toLowerCase();
-                if (needle.length === 0) return false;
-                return b.op === "eq" ? body === needle : body.includes(needle);
-              });
+            : (() => {
+                // Botões: id nativo, "1"/"2"/"3" do fallback, ou título (contains).
+                const porEscolha = casarEscolha({
+                  buttonId: lastInboundButtonId,
+                  body: lastInboundBody ?? "",
+                  buttons: node.config.branches.map((b) => ({
+                    id: b.id,
+                    text: (b.label ?? b.pattern).trim() || b.id,
+                  })),
+                });
+                if (porEscolha) {
+                  const ramo = node.config.branches.find((b) => b.id === porEscolha.id);
+                  if (ramo) return ramo;
+                }
+                return node.config.branches.find((b) => {
+                  const needle = b.pattern.trim().toLowerCase();
+                  if (needle.length === 0) return false;
+                  return b.op === "eq" ? body === needle : body.includes(needle);
+                });
+              })();
         const edge = hit
           ? selectEdge(edges, node.id, { type: "branch", branch_id: hit.id })
           : selectEdge(edges, node.id, { type: "always" }) ??
@@ -596,6 +633,17 @@ export function processNode(input: {
     }
 
     case "action": {
+      // Handoff sincroniza no engine (sem job de send) — senão a fila nunca
+      // recebe o rótulo e o enrollment fica esperando um turno que não existe.
+      if (node.config.mode === "handoff") {
+        return {
+          kind: "handoff",
+          queue_label: node.config.queue_label,
+          ...(node.config.inactivity_message
+            ? { inactivity_message: node.config.inactivity_message }
+            : {}),
+        };
+      }
       // At-most-once send: enqueue the turn EXACTLY ONCE per occupancy. First entry
       // (no prior occupancy event) enqueues; a recheck fired while the turn is still in
       // flight — completeTurnForEnrollment (turn-bridge) hasn't advanced the enrollment

@@ -96,6 +96,7 @@ export const CAMPOS_DA_CONDICAO: Record<CampoDaCondicao, CampoDeCondicao> = {
   tag: { rotulo: "Etiqueta do contato", tipoDeValor: "etiqueta" },
   steps_taken: { rotulo: "Passos já dados no fluxo", tipoDeValor: "numero" },
   last_outcome: { rotulo: "Desfecho do passo anterior", tipoDeValor: "texto" },
+  contact_name: { rotulo: "Nome do contato", tipoDeValor: "texto" },
 };
 
 // ─── condição: o par (campo, operador) ───────────────────────────────────
@@ -248,6 +249,41 @@ const COMPARADORES: Record<CampoDaCondicao, Record<OperadorDaCondicao, Comparado
     lte: {
       rotulo: "é no máximo",
       frase: (v) => `O desfecho do passo anterior é no máximo ${aspas(v)}`,
+      oferecido: false,
+      aviso: AVISO_SO_NUMERO,
+    },
+  },
+  contact_name: {
+    eq: {
+      rotulo: "é",
+      frase: (v) =>
+        String(v).trim() === ""
+          ? "O contato ainda não tem nome"
+          : `O nome do contato é ${aspas(v)}`,
+      oferecido: true,
+    },
+    neq: {
+      rotulo: "não é",
+      frase: (v) =>
+        String(v).trim() === ""
+          ? "O contato já tem nome"
+          : `O nome do contato não é ${aspas(v)}`,
+      oferecido: true,
+    },
+    contains: {
+      rotulo: "contém",
+      frase: (v) => `O nome do contato contém ${aspas(v)}`,
+      oferecido: true,
+    },
+    gte: {
+      rotulo: "é pelo menos",
+      frase: (v) => `O nome do contato é pelo menos ${aspas(v)}`,
+      oferecido: false,
+      aviso: AVISO_SO_NUMERO,
+    },
+    lte: {
+      rotulo: "é no máximo",
+      frase: (v) => `O nome do contato é no máximo ${aspas(v)}`,
       oferecido: false,
       aviso: AVISO_SO_NUMERO,
     },
@@ -432,6 +468,8 @@ export const MODOS_DA_ACAO: Record<ModoDaAcao, string> = {
   text: "Texto fixo",
   ai_message: "Mensagem escrita pela IA",
   template: "Modelo de mensagem pronto",
+  choices: "Botões de escolha",
+  handoff: "Passar para a fila",
 };
 
 // ─── nó final ────────────────────────────────────────────────────────────
@@ -489,4 +527,6 @@ export const GATILHOS: Record<TipoDeGatilho, string> = {
   // clínica, não quem escreveu o schema.
   case_opened: "Quando o agente pede ajuda de um humano",
   conversation_end: "Fim da conversa",
+  first_contact: "Primeiro contato no WhatsApp",
+  returning_after_silence: "Retorno após silêncio",
 };

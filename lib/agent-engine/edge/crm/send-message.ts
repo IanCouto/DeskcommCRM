@@ -77,6 +77,11 @@ export interface SendMessageInput {
    * colidirem no ledger e o segundo virar `already_sent` sem ter saído.
    */
   template?: { name: string; language: string; values: Record<string, string> };
+  choices?: {
+    header?: string;
+    footer?: string;
+    buttons: Array<{ id: string; text: string }>;
+  };
 }
 
 /** Fallback do ator ai_agent quando não há agente publicado (cfg.agentActorId). */
@@ -134,7 +139,10 @@ export async function sendTurnMessage(
             }
           : { type: 'text' as const }),
         body: input.body,
-        metadata: { idempotency_key: idempotencyKey },
+        metadata: {
+          idempotency_key: idempotencyKey,
+          ...(input.choices ? { choices: input.choices } : {}),
+        },
       },
     );
   } catch (err) {

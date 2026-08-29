@@ -104,6 +104,8 @@ function fakeDb(opts: {
     loadFlowGraph: async () => opts.graph,
     loadLeadFacts: async () => ({ lead_stage: null, tags: [] }),
     loadLastInboundBody: async () => null,
+    loadLastInboundButtonId: async () => null,
+    handoffToQueue: async () => {},
     loadEnrollmentEvents: async () => [],
     insertEnrollmentEvent,
     updateEnrollment,

@@ -42,7 +42,9 @@ export type HandoffReason =
    * a MESMA constante que o engine grava: dois caminhos param a IA pelo mesmo
    * motivo, e duas grafias fariam quem filtra por uma achar metade das conversas.
    */
-  | "orcamento_de_ia";
+  | "orcamento_de_ia"
+  /** Nó de follow-up passou a conversa para a fila humana (com rótulo). */
+  | "followup";
 
 export interface TriggerHandoffInput {
   conversationId: string;

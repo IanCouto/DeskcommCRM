@@ -137,6 +137,15 @@ export interface OutboundEnvelope extends ChannelTenantScope {
    * `undefined` = envio solto, que é o caso comum.
    */
   replyToExternalId?: string | null;
+  /**
+   * Botões de resposta rápida (WAHA `sendButtons`). Só o adapter WAHA usa.
+   * Se o envio falhar, o adapter cai no `body` (texto numerado) sem relançar.
+   */
+  choices?: {
+    header?: string;
+    footer?: string;
+    buttons: Array<{ id: string; text: string }>;
+  };
 }
 
 /**

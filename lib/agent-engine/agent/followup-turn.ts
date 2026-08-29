@@ -18,6 +18,7 @@
 import { z } from 'zod';
 import type pg from 'pg';
 
+import { interpolateTemplate } from '@/lib/inbox/template-vars';
 import { withFields } from '../obs/logger';
 import type { JobRow } from '../queue/queue';
 import { getLeadContext, type LeadContext } from '../edge/crm/get-lead-context';
@@ -73,6 +74,15 @@ export const followupTurnPayloadSchema = z
     prompt_hint: z.string().optional(),
     /** action mode `text` — enviado pela cadeia de guardrails, sem LLM. */
     fixed_body: z.string().min(1).max(4000).optional(),
+    /** action mode `choices` — botões + fallback numerado em fixed_body. */
+    choices: z
+      .object({
+        header: z.string().optional(),
+        footer: z.string().optional(),
+        buttons: z.array(z.object({ id: z.string(), text: z.string() })).min(1).max(3),
+      })
+      .optional(),
+    contact_name: z.string().nullable().optional(),
     /** action mode `template` — corpo em `message_templates`. */
     template_id: z.string().uuid().optional(),
     volta_index: z.number().int().optional(),
@@ -260,6 +270,8 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
         classes: payload.classes,
         hint: payload.hint,
         waits: payload.waits,
+        choices: payload.choices,
+        contactName: payload.contact_name,
       });
       return;
     }
@@ -410,6 +422,12 @@ async function runFlowDrivenTurn(
     classes: string[] | undefined;
     hint: string | undefined;
     waits: EsperaParaPlanejar[] | undefined;
+    choices?: {
+      header?: string;
+      footer?: string;
+      buttons: Array<{ id: string; text: string }>;
+    };
+    contactName?: string | null;
   },
 ): Promise<void> {
   if (input.nodeId === undefined || input.purpose === undefined) {
@@ -425,10 +443,23 @@ async function runFlowDrivenTurn(
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: target.tenantId, lead_id: target.leadId, enrollment_id: enrollmentId });
 
   if (input.purpose === 'send_message') {
-    const body = await resolveFlowSendBody(pool, target.tenantId, input);
+    const body = await resolveFlowSendBody(pool, target.tenantId, {
+      ...input,
+      contactName: input.contactName,
+    });
     if (body !== null) {
       // Texto do operador: sem camada semântica (ver o cabeçalho de sendFixedOutbound).
-      const sent = await sendFixedOutbound(deps, job, pool, ctx, clock, target, body, false);
+      const sent = await sendFixedOutbound(
+        deps,
+        job,
+        pool,
+        ctx,
+        clock,
+        target,
+        body,
+        false,
+        input.choices,
+      );
       if (sent) {
         await complete(pool, { organizationId: target.tenantId, enrollmentId, nodeId, result: { kind: 'sent' } });
       }
@@ -551,10 +582,13 @@ async function resolveFlowSendBody(
     templateId: string | undefined;
     voltaIndex: number | undefined;
     voltaTotal: number | undefined;
+    contactName?: string | null;
   },
 ): Promise<string | null> {
+  const nome = { name: input.contactName ?? null };
   if (input.fixedBody !== undefined) {
-    return interpolarVoltaDoPayload(input.fixedBody, input.voltaIndex, input.voltaTotal);
+    const comVolta = interpolarVoltaDoPayload(input.fixedBody, input.voltaIndex, input.voltaTotal);
+    return interpolateTemplate(comVolta, nome);
   }
   if (input.templateId === undefined) return null;
   const { rows } = await pool.query<{ body: string }>(
@@ -565,7 +599,7 @@ async function resolveFlowSendBody(
   if (body === undefined || body.length === 0) {
     throw new Error('followup_turn sem modelo de mensagem — o template_id do passo não existe nesta organização');
   }
-  return interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal);
+  return interpolateTemplate(interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal), nome);
 }
 
 /**
@@ -605,6 +639,11 @@ async function sendFixedOutbound(
   body: string,
   /** `true` só na re-entrada por template — ver o cabeçalho. */
   comCamadaSemantica: boolean,
+  choices?: {
+    header?: string;
+    footer?: string;
+    buttons: Array<{ id: string; text: string }>;
+  },
 ): Promise<boolean> {
   const { tenantId, leadId, channelSessionId, conversationId } = target;
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: tenantId, lead_id: leadId });
@@ -660,7 +699,16 @@ async function sendFixedOutbound(
             ),
         }
       : {}),
-    send: (finalBody) => channel.send({ tenantId, leadId, jobId: job.id, seq: 1, conversationId, body: finalBody }),
+    send: (finalBody) =>
+      channel.send({
+        tenantId,
+        leadId,
+        jobId: job.id,
+        seq: 1,
+        conversationId,
+        body: finalBody,
+        ...(choices ? { choices } : {}),
+      }),
   });
 
   if (chain.status === 'vetoed') {

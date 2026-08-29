@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -75,6 +77,8 @@ function SeletorDeModelo({
   );
 }
 
+type BotaoLocal = { id: string; text: string };
+
 export function ActionForm({
   config,
   onChange,
@@ -84,12 +88,28 @@ export function ActionForm({
 }) {
   const t = useT();
   const [mode, setMode] = useState(config.mode);
-  const [body, setBody] = useState(config.mode === "text" ? config.body : "");
+  const [body, setBody] = useState(
+    config.mode === "text" || config.mode === "choices" ? config.body : "",
+  );
   const [promptHint, setPromptHint] = useState(config.mode === "ai_message" ? config.prompt_hint : "");
   const [fallbackTemplateId, setFallbackTemplateId] = useState(
     config.mode === "ai_message" ? (config.fallback_template_id ?? "") : "",
   );
   const [templateId, setTemplateId] = useState(config.mode === "template" ? config.template_id : "");
+  const [queueLabel, setQueueLabel] = useState(config.mode === "handoff" ? config.queue_label : "");
+  const [inactivityMessage, setInactivityMessage] = useState(
+    config.mode === "handoff" ? (config.inactivity_message ?? "") : "",
+  );
+  const [header, setHeader] = useState(config.mode === "choices" ? (config.header ?? "") : "");
+  const [footer, setFooter] = useState(config.mode === "choices" ? (config.footer ?? "") : "");
+  const [buttons, setButtons] = useState<BotaoLocal[]>(
+    config.mode === "choices"
+      ? config.buttons
+      : [
+          { id: "opcao_1", text: "Opção 1" },
+          { id: "opcao_2", text: "Opção 2" },
+        ],
+  );
   const [error, setError] = useState<string | null>(null);
 
   const commit = (next: {
@@ -98,6 +118,11 @@ export function ActionForm({
     promptHint: string;
     fallbackTemplateId: string;
     templateId: string;
+    queueLabel: string;
+    inactivityMessage: string;
+    header: string;
+    footer: string;
+    buttons: BotaoLocal[];
   }) => {
     const candidate =
       next.mode === "text"
@@ -108,7 +133,23 @@ export function ActionForm({
               prompt_hint: next.promptHint,
               ...(next.fallbackTemplateId.trim() ? { fallback_template_id: next.fallbackTemplateId } : {}),
             }
-          : { mode: "template" as const, template_id: next.templateId };
+          : next.mode === "template"
+            ? { mode: "template" as const, template_id: next.templateId }
+            : next.mode === "choices"
+              ? {
+                  mode: "choices" as const,
+                  body: next.body,
+                  ...(next.header.trim() ? { header: next.header.trim() } : {}),
+                  ...(next.footer.trim() ? { footer: next.footer.trim() } : {}),
+                  buttons: next.buttons,
+                }
+              : {
+                  mode: "handoff" as const,
+                  queue_label: next.queueLabel,
+                  ...(next.inactivityMessage.trim()
+                    ? { inactivity_message: next.inactivityMessage.trim() }
+                    : {}),
+                };
     const parsed = actionConfigSchema.safeParse(candidate);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? t("Configuração inválida."));
@@ -118,7 +159,17 @@ export function ActionForm({
     onChange(parsed.data);
   };
 
-  const fields = { body, promptHint, fallbackTemplateId, templateId };
+  const fields = {
+    body,
+    promptHint,
+    fallbackTemplateId,
+    templateId,
+    queueLabel,
+    inactivityMessage,
+    header,
+    footer,
+    buttons,
+  };
 
   return (
     <div className="space-y-3">
@@ -158,7 +209,8 @@ export function ActionForm({
             }}
           />
           <p className="text-xs text-text-muted">
-            {t("Sai exatamente assim, sem IA. No laço,")} {t("{{volta}}")} e {t("{{voltas}}")} {t("viram o número da volta.")}
+            {t("Sai exatamente assim, sem IA. Use")} {t("{{nome}}")} / {t("{{primeiro_nome}}")}.{" "}
+            {t("No laço,")} {t("{{volta}}")} {t("e")} {t("{{voltas}}")}.
           </p>
         </div>
       ) : mode === "ai_message" ? (
@@ -188,7 +240,7 @@ export function ActionForm({
             />
           </div>
         </>
-      ) : (
+      ) : mode === "template" ? (
         <div className="space-y-2">
           <Label htmlFor="action-template-id">{t("Modelo de mensagem")}</Label>
           <SeletorDeModelo
@@ -200,6 +252,118 @@ export function ActionForm({
               commit({ mode, ...fields, templateId: v });
             }}
           />
+        </div>
+      ) : mode === "choices" ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="action-choices-body">{t("Texto acima dos botões")}</Label>
+            <Textarea
+              id="action-choices-body"
+              maxLength={4000}
+              value={body}
+              onChange={(e) => {
+                setBody(e.target.value);
+                commit({ mode, ...fields, body: e.target.value });
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="action-choices-header">{t("Cabeçalho (opcional)")}</Label>
+            <Input
+              id="action-choices-header"
+              maxLength={60}
+              value={header}
+              onChange={(e) => {
+                setHeader(e.target.value);
+                commit({ mode, ...fields, header: e.target.value });
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("Botões (máx. 3)")}</Label>
+            {buttons.map((b, i) => (
+              <div key={i} className="flex gap-2">
+                <Input
+                  placeholder="id"
+                  value={b.id}
+                  onChange={(e) => {
+                    const next = buttons.map((x, j) => (j === i ? { ...x, id: e.target.value } : x));
+                    setButtons(next);
+                    commit({ mode, ...fields, buttons: next });
+                  }}
+                />
+                <Input
+                  placeholder={t("Texto")}
+                  maxLength={20}
+                  value={b.text}
+                  onChange={(e) => {
+                    const next = buttons.map((x, j) => (j === i ? { ...x, text: e.target.value } : x));
+                    setButtons(next);
+                    commit({ mode, ...fields, buttons: next });
+                  }}
+                />
+              </div>
+            ))}
+            {buttons.length < 3 && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const next = [...buttons, { id: `opcao_${buttons.length + 1}`, text: `Opção ${buttons.length + 1}` }];
+                  setButtons(next);
+                  commit({ mode, ...fields, buttons: next });
+                }}
+              >
+                {t("Adicionar botão")}
+              </Button>
+            )}
+            <p className="text-xs text-text-muted">
+              {t("Se o WhatsApp recusar os botões, o sistema manda o mesmo texto numerado (1) 2) 3)).")}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="action-choices-footer">{t("Rodapé (opcional)")}</Label>
+            <Input
+              id="action-choices-footer"
+              maxLength={60}
+              value={footer}
+              onChange={(e) => {
+                setFooter(e.target.value);
+                commit({ mode, ...fields, footer: e.target.value });
+              }}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="action-queue-label">{t("Rótulo na fila de atendentes")}</Label>
+            <Input
+              id="action-queue-label"
+              maxLength={80}
+              value={queueLabel}
+              onChange={(e) => {
+                setQueueLabel(e.target.value);
+                commit({ mode, ...fields, queueLabel: e.target.value });
+              }}
+            />
+            <p className="text-xs text-text-muted">
+              {t("A conversa vai para a fila humana com este motivo visível.")}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="action-inactivity-msg">{t("Se ninguém falar em 24h (opcional)")}</Label>
+            <Textarea
+              id="action-inactivity-msg"
+              maxLength={1000}
+              value={inactivityMessage}
+              onChange={(e) => {
+                setInactivityMessage(e.target.value);
+                commit({ mode, ...fields, inactivityMessage: e.target.value });
+              }}
+            />
+          </div>
         </div>
       )}
       {error && <p className="text-xs text-error-fg">{error}</p>}
