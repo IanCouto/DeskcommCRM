@@ -154,7 +154,7 @@ describe("Tailwind 4 — utilitários que mudaram de significado", () => {
     // consertou-se a instância e não a classe, e esta linha era a instância
     // que sobrou. Para reprovar de novo, se alguém duvidar: plante
     // `hover:rounded` num `className` de `components/` e rode este arquivo.
-    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])rounded(?=[\s"'`])/g);
+    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])rounded(?=[\s"'`!]|$)/g);
     expect(culpados, "use `rounded-md` (8px) ou o grau explícito").toEqual([]);
   });
 
@@ -162,7 +162,7 @@ describe("Tailwind 4 — utilitários que mudaram de significado", () => {
     // O `outline-none` do v4 é outra coisa (`outline-style: none`) e não
     // preserva o contorno transparente que o modo de alto contraste do sistema
     // precisa. Trocar por engano degrada acessibilidade sem quebrar nada.
-    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])outline-none(?=[\s"'`])/g);
+    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])outline-none(?=[\s"'`!]|$)/g);
     expect(culpados, "use `outline-hidden`").toEqual([]);
   });
 
@@ -183,12 +183,12 @@ describe("Tailwind 4 — utilitários que mudaram de significado", () => {
     //
     // Não dá para consertar pelo `@theme`: o `.shadow` do v4 é embutido com
     // valor literal e o embutido vence — igual ao `rounded`.
-    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])shadow(?=[\s"'`])/g);
+    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])shadow(?=[\s"'`!]|$)/g);
     expect(culpados, "use `shadow-sm` (o `--shadow-sm` do produto) ou o grau explícito").toEqual([]);
   });
 
   it("não usa `flex-shrink-*` / `flex-grow-*` — renomeados para `shrink-*` / `grow-*`", () => {
-    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])flex-(shrink|grow)(-\d+)?(?=[\s"'`])/g);
+    const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])flex-(shrink|grow)(-\d+)?(?=[\s"'`!]|$)/g);
     expect(culpados, "use `shrink-*` / `grow-*`").toEqual([]);
   });
 });
@@ -283,6 +283,36 @@ function listarFontes(raizes: string[]): string[] {
   return saida;
 }
 
+// ⚠️ O LOOKAHEAD `(?=[\s"\'`!]|$)` DAS QUATRO REGEXES, e por que ele tem `!` e `$`.
+//
+// Esta é a TERCEIRA vez que o mesmo defeito aparece neste arquivo, e as duas
+// primeiras foram consertadas por INSTÂNCIA — que é justamente o que deixou a
+// terceira nascer:
+//
+//   1ª  `data-[state=active]:shadow` escapou porque o LOOKBEHIND não tinha `:`.
+//       Conserto: pôr `:` na regex do `shadow`.
+//   2ª  `hover:rounded` escapou pelo MESMO motivo, na regex do `rounded`, que
+//       tinha ficado de fora do conserto anterior.
+//       Conserto: pôr `:` na regex do `rounded`.
+//   3ª  `rounded!` e `rounded` no FIM DA LINHA escapavam pelo LOOKAHEAD, que era
+//       `(?=[\s"\'`])` nas quatro — cego para o sufixo `!` (a forma `important`
+//       do Tailwind 4) e para o fim de linha, que acontece em toda classe que
+//       cai no fim de um template literal multi-linha.
+//
+// O conserto da 3ª foi aplicado nas QUATRO ao mesmo tempo, de propósito. As duas
+// primeiras vezes trataram o sítio que doía e deixaram os irmãos com o mesmo
+// buraco; a lição é que o furo é da FORMA da regex, não da classe que ela caça.
+//
+// Provado por plantio, com a previsão escrita antes: com o lookahead velho, dos
+// três violadores (`rounded!`, `rounded` no fim de linha, `rounded ` com espaço)
+// a guarda pegava UM. Com o novo, pega os três — e `rounded-md`, `rounded-lg`,
+// `rounded-full!` continuam passando, que é o controle que impede uma regex de
+// "acertar" reprovando tudo.
+//
+// O que este lookahead NÃO cobre, escrito para ninguém supor que cobre: classe
+// colada em outra sem separador (`roundedpx-2` não é classe válida, então não
+// importa), e classe montada por concatenação em tempo de execução
+// (`"round" + "ed"`), que nenhuma varredura de texto pega.
 function ocorrencias(arquivos: string[], rx: RegExp): string[] {
   const achados: string[] = [];
   for (const f of arquivos) {
