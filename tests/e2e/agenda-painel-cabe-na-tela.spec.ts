@@ -4,6 +4,8 @@ import * as path from "node:path";
 
 import { test, expect, type Page } from "@playwright/test";
 
+import { escolherPrimeiroDiaCheio } from "./helpers/agenda-semana-integra";
+
 /**
  * O PAINEL DE MARCAR CABE NA TELA — medido por GEOMETRIA, não por presença.
  *
@@ -110,15 +112,13 @@ async function abrirPainelComDiaEscolhido(page: Page, nomeDoTipo: string): Promi
   await expect(page.getByTestId("tipos-de-agendamento")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: new RegExp(`^${nomeDoTipo}`) }).click();
 
-  // O primeiro dia CLICÁVEL. `data-disponivel` é o que a tela usa para decidir
-  // o clique, então usá-lo aqui mede o mesmo estado que o usuário enxerga.
-  const dia = page.locator('[data-testid^="dia-"][data-disponivel="true"]').first();
-  await expect(
-    dia,
-    "nenhum dia disponível — o seed da agenda não deixou jornada publicada, e sem " +
-      "dia clicável a coluna de horários nunca abre (o defeito ficaria invisível)",
-  ).toBeVisible({ timeout: 20_000 });
-  await dia.click();
+  // ⚠️ UM DIA INTEIRO, e NÃO o primeiro clicável — que é HOJE, já meio gasto.
+  //
+  // A razão medida (9 horários às 15:27 UTC e 7 às 16:37, mesmo commit e mesmo
+  // seed) mora com a função, em `helpers/agenda-semana-integra`. Ela está lá e
+  // não aqui de propósito: três outras specs de agenda pisaram na mesma pedra no
+  // mesmo dia, e a regra só fecha a classe se tiver um dono só.
+  await escolherPrimeiroDiaCheio(page);
 
   const coluna = page.getByTestId("coluna-de-horarios");
   await expect(coluna).toHaveAttribute("data-aberta", "true", { timeout: 15_000 });
@@ -214,8 +214,11 @@ test("a lista de horários ROLA, e o último horário é alcançável — 1280×
    * também não rola, porque o Sheet é `position: fixed` e transbordo de elemento
    * fixo não estende a área rolável do documento.
    *
-   * Viewport 700px de altura de propósito: é onde a lista estoura com a
-   * quantidade de horários que o seed produz.
+   * Viewport 700px de altura de propósito: é onde a lista estoura com os 18
+   * horários de um dia inteiro da jornada semeada (09:00–17:30, de 30 em 30).
+   * "De um dia inteiro" é a parte que este caso já pagou caro: enquanto ele
+   * clicava em HOJE, a contagem era o resto do dia e mudava com a hora do run —
+   * ver o comentário de `abrirPainelComDiaEscolhido`.
    */
   await page.setViewportSize({ width: 1280, height: 700 });
   const creds = lerCreds();
@@ -228,9 +231,14 @@ test("a lista de horários ROLA, e o último horário é alcançável — 1280×
   const n = await horarios.count();
 
   // ── PRÉ-CONDIÇÃO DE SUFICIÊNCIA ──────────────────────────────────────────
-  // Sem isto o caso fica VERDE POR VACUIDADE no dia em que o seed produzir
+  // Sem isto o caso fica VERDE POR VACUIDADE no dia em que o cenário produzir
   // poucos slots: uma lista que cabe na tela não precisa rolar, e "não rolou"
   // passaria a ser lido como "está consertado".
+  //
+  // Ela JÁ COBROU, e cobrou certo: com o dia sendo hoje, reprovou a `main` com 9
+  // e depois com 7 horários — recusando-se a passar por um cenário que não
+  // exercitava rolagem nenhuma. O conserto foi dar-lhe o cenário (um dia com a
+  // jornada inteira), nunca baixar a régua.
   //
   // ⚠️ A RÉGUA É O ESPAÇO QUE SOBRA PARA A LISTA, e não a altura da janela — e
   // eu escrevi errado da primeira vez. Comparar `n * 50` com os 700px da

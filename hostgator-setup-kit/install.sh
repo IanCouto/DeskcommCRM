@@ -204,6 +204,26 @@ v_hex() {
   return 1
 }
 
+# O idioma em que o sistema abre para QUEM INSTALA e para quem ele convidar.
+#
+# Vai para `organizations.locale`, e não só para o usuário dono: é a organização
+# que responde pelos convidados que ainda não existem — quem entra sem
+# preferência própria cai no idioma da empresa (a cadeia vive em
+# `lib/auth/server.ts`). Sem isto, uma clínica na Colômbia instalava em espanhol
+# e via o produto inteiro em português na primeira tela, sem nada indicando onde
+# trocar.
+#
+# Aceita o código e o número da opção, porque quem lê "1) Português" digita "1".
+v_locale() {
+  case "$1" in
+    ''|pt-BR|es) return 0;;
+    1) return 0;;
+    2) return 0;;
+  esac
+  echo "Escolha 1 (Português) ou 2 (Español) — ou Enter para Português"
+  return 1
+}
+
 v_supabase_url() {
   case "$1" in
     https://*.supabase.co) ;;
@@ -1163,6 +1183,10 @@ FIELDS=(
   "OWNER_EMAIL|E-mail do primeiro admin (dono)||v_email||"
   "OWNER_PASSWORD|Senha do primeiro admin (mínimo 8 caracteres)||v_password|secret|"
   "APP_NAME|Nome que aparece na interface (Enter para o padrão)|DeskcommCRM|||"
+  # Idioma da instalação. Fica JUNTO do nome do produto de propósito: as duas
+  # perguntas são "como o sistema se apresenta", e separá-las faria a segunda
+  # parecer configuração técnica.
+  "APP_LOCALE|Idioma do sistema — 1) Português  2) Español (Enter = Português)|1|v_locale||"
   # Sem default, e `opcional`: em `--yes` o `ask_one` devolve 0 sem associar a
   # variável (campo sem default e sem `opcional` morre em `die`), e o `envq` lá
   # embaixo usa `${APP_ACCENT_HEX:-}`. Enter = a cor do produto, que é o
@@ -1461,7 +1485,15 @@ esac
   printf '# APP_ACCENT_HEX é a SEMENTE da cor: o banco (platform_branding) manda depois\n'
   printf '# da primeira leitura, mas é daqui que sai a cor dos e-mails de acesso, que o\n'
   printf '# marca-emails.sh empurra para o GoTrue e o banco não alcança.\n'
+  # Normaliza a escolha do idioma ANTES de gravar: o campo aceita "1"/"2"
+  # porque é o que se digita lendo um menu numerado, mas quem lê o `.env` — o
+  # bootstrap, o SQL abaixo, um operador conferindo — precisa do código.
+  case "${APP_LOCALE:-}" in
+    2|es) APP_LOCALE="es";;
+    *)    APP_LOCALE="pt-BR";;
+  esac
   envq APP_NAME "$APP_NAME"
+  envq APP_LOCALE "$APP_LOCALE"
   envq APP_LOGO_URL "${APP_LOGO_URL:-}"
   # Perguntar sem gravar seria PIOR que não perguntar: este bloco fecha com
   # `} > .env`, que TRUNCA o arquivo a partir da lista fechada de `envq` acima e
@@ -1714,7 +1746,7 @@ curl -fsS -X POST "${NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users" \
   -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"${OWNER_EMAIL}\",\"password\":\"${OWNER_PASSWORD}\",\"email_confirm\":true}" \
+  -d "{\"email\":\"${OWNER_EMAIL}\",\"password\":\"${OWNER_PASSWORD}\",\"email_confirm\":true,\"user_metadata\":{\"locale\":\"${APP_LOCALE:-pt-BR}\"}}" \
   >/dev/null 2>&1 || true
 
 # 2) Resolve o id direto do auth.users e cria org + membership + platform_admin.
@@ -1734,8 +1766,21 @@ begin
   end if;
   select id into v_org from public.organizations where slug='minha-empresa';
   if v_org is null then
-    insert into public.organizations (slug, display_name, legal_name, created_by)
-    values ('minha-empresa','Minha Empresa','Minha Empresa', v_uid) returning id into v_org;
+    -- `locale` aqui, e não só no usuário dono: é a organização que responde
+    -- pelos convidados que ainda não existem. Quem entra sem preferência
+    -- própria cai neste valor, então gravar só no dono entregaria o sistema em
+    -- português para todo mundo que ele convidasse numa instalação em espanhol.
+    insert into public.organizations (slug, display_name, legal_name, locale, created_by)
+    values ('minha-empresa','Minha Empresa','Minha Empresa','${APP_LOCALE:-pt-BR}', v_uid)
+    returning id into v_org;
+  else
+    -- Re-execução do instalador com outra resposta: quem rodou de novo para
+    -- trocar o idioma esperaria que trocasse. Só mexe se a organização ainda
+    -- estiver no padrão — se alguém já escolheu pela tela, a escolha dela vale
+    -- mais que uma resposta repetida no terminal.
+    update public.organizations
+       set locale = '${APP_LOCALE:-pt-BR}'
+     where id = v_org and coalesce(locale, 'pt-BR') = 'pt-BR';
   end if;
   -- O provedor que a pessoa ESCOLHEU passa a valer no banco. O trigger
   -- fn_seed_org_llm_defaults semeia 'anthropic' fixo — o que estava certo
@@ -1758,8 +1803,37 @@ begin
   values (v_uid, v_org, 'admin', now())
   on conflict (user_id, organization_id) do update set role='admin', revoked_at=null;
   if not exists (select 1 from public.platform_admins where user_id=v_uid and revoked_at is null) then
-    insert into public.platform_admins (user_id, granted_by, scope, reason)
-    values (v_uid, v_uid, 'full', 'Bootstrap inicial do self-host');
+    -- ⚠️ ATENÇÃO: este heredoc NÃO é citado, então o bash expande crase aqui
+    -- dentro. Crase em volta de nome de coluna vira substituição de comando e o
+    -- instalador morre com "command not found" no meio da criação do dono.
+    -- Medido: a primeira versão deste comentário usava crase e a suíte do kit
+    -- reprovou em três casos. Nome de coluna aqui vai sem crase.
+    --
+    -- mfa_required EXPLÍCITO, contra o default "true" da coluna — a MESMA razão
+    -- que scripts/bootstrap-owner.ts:201 já documenta, e que este INSERT não
+    -- acompanhou.
+    --
+    -- Medido numa instalação self-host recém-feita por este script:
+    --
+    --   select column_default from information_schema.columns
+    --    where table_name='platform_admins' and column_name='mfa_required';
+    --   -> true
+    --
+    -- Como o INSERT abaixo não informava a coluna, TODA instalação nascia
+    -- exigindo TOTP do dono. lib/auth/politica-mfa.ts passou a LER essa coluna
+    -- (antes o gate olhava só is_platform_admin), e o cabeçalho dele registra
+    -- que o cadastro virou opcional exatamente para acabar com o bloqueador de
+    -- tela cheia logo depois do onboarding — "segurança que expulsa o usuário na
+    -- primeira tela não protege ninguém".
+    --
+    -- Ou seja: o defeito que a mudança de doutrina eliminou continuava vivo pelo
+    -- caminho do instalador, que é justamente o caminho de TODO self-hoster. O
+    -- bootstrap-owner.ts estava certo; este INSERT é que ficou para trás.
+    --
+    -- false e não omitir: quem quiser exigir liga em Configurações › Segurança,
+    -- e a decisão fica visível na linha em vez de herdada de um default.
+    insert into public.platform_admins (user_id, granted_by, scope, mfa_required, reason)
+    values (v_uid, v_uid, 'full', false, 'Bootstrap inicial do self-host');
   end if;
 end \$\$;
 SQL
