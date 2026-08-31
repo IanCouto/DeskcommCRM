@@ -8,6 +8,34 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.10.2] — 2026-08-30
+
+### Corrigido
+
+- **Quando a IA fica calada, agora dá para ver por quê** Três consertos que atacam o mesmo problema: o sistema fazia a coisa certa em
+  silêncio, e de fora parecia quebrado.
+
+  **A ficha de proteção de envio parou de congelar o padrão do dia.** O botão
+  "Enviar aos domingos" era o único controle daquela ficha que não sabia dizer
+  "não mexi": ele gravava sempre o valor que estava na tela, e o valor na tela,
+  sem escolha própria, era o padrão vigente. Quem abriu a ficha para declarar o
+  aquecimento do número acabou congelando o padrão daquele dia — e, quando o
+  produto passou a liberar domingo, essa instalação ficou para trás com uma
+  escolha que ninguém fez. Agora só um valor DIFERENTE do padrão vira escolha.
+  Quem desligou o domingo de propósito continua com ele desligado.
+
+  **A espera pela janela de envio virou aviso na Central.** Quando o número está
+  fora do horário de envio, as respostas ficam na fila e saem na abertura — isso
+  não mudou. O que mudou é que agora existe um aviso dizendo que estão esperando,
+  a partir de quando saem e o que fazer. Um aviso por número, e ele se resolve
+  sozinho quando o horário reabre.
+
+  **A aba "Execuções" de um agente mostra o que ele realmente fez.** Ela lia uma
+  tabela que nenhum motor em uso escreve, e por isso dizia "Nenhuma execução
+  ainda" mesmo com o agente respondendo. Passou a ler o registro vivo. Execuções
+  anteriores a esta versão não aparecem ali — para o histórico completo, use
+  IA › Execuções.
+
 ## [1.10.1] — 2026-08-28
 
 ### Corrigido
@@ -1540,7 +1568,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.1...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.2...HEAD
+[1.10.2]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.1...v1.10.0
 [1.9.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.9.0...v1.9.1

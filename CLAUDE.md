@@ -111,10 +111,12 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
   com OBJETO DE COMUNICAÇÃO ("parar de me mandar", "sair da lista"). Enquanto eram duas
   regras, a ingestão bloqueava paciente que perguntou "tem como parar a dor?" — medido em
   clínica, 12 falsos positivos num corpus de 32 frases de nicho.
-  Para ver o vocabulário em vigor sem confiar nesta linha:
+  Cobre português e espanhol, nos dois níveis (inequívoco e ambíguo) — foi preciso um PR
+  além do #275 (que só tinha coberto o vocabulário inequívoco) para o espanhol ganhar a
+  camada ambígua e as construções com pronome preso ("escribirme"). Para ver o vocabulário
+  em vigor sem confiar nesta linha:
   `grep -n 'PALAVRAS_DE_OPT_OUT' -A20 lib/opt-out/deteccao.ts`, e as frases de controle em
-  `tests/unit/opt-out-deteccao.test.ts`. **Espanhol ainda NÃO é coberto** (`baja`, `salir`,
-  `no quiero recibir`) — ver PR #275.
+  `tests/unit/opt-out-deteccao.test.ts`.
 - Mídia: subir pro Supabase Storage primeiro, passar URL ao WAHA (não inline base64)
 - Multi-device: assinar `message.any` (não só `message`); tratar `fromMe=true` sem duplicar
 - Grupos: SKIP CRM binding se `chatId.endsWith('@g.us')`. Sender é `p.author`, não `p.from`

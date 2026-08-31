@@ -125,8 +125,19 @@ test.describe("A aba do papel que organiza o sistema", () => {
     expect(altura, "o painel está no DOM e não ocupa espaço na tela").toBeGreaterThan(100);
 
     // Todas as conferências, não uma amostra.
+    //
+    // ⚠️ ESTE NÚMERO É ESPELHO DE `lib/ai/guardrails/lista-de-conferencia.ts`, e
+    // ele mora em DOIS lugares: aqui e em `tests/unit/painel-de-seguranca.test.tsx`.
+    // Quem acrescentar uma conferência precisa mexer nos dois — o unit reprova na
+    // hora, este só no `e2e`, minutos depois e noutro job, e é fácil concluir que
+    // a falha é de ambiente.
+    //
+    // Foi o que aconteceu no PR #420 (@automatikpg-ux): ele acrescentou
+    // `agenda_stall`, atualizou o unit (que ele viu reprovar) e não tinha como
+    // saber deste. A conta é `CONFERENCIAS_DE_SAIDA.length + 1` — a de entrada —,
+    // e o próprio unit prova a igualdade exata entre o DOM e a lista.
     const itens = painel.locator('[data-testid^="item-conferencia-"]');
-    await expect(itens).toHaveCount(11);
+    await expect(itens).toHaveCount(12);
 
     // EXATAMENTE DOIS interruptores — um por camada que custa dinheiro. Este caso
     // já afirmou ZERO, e a mudança é deliberada: enquanto o motor lia só o `.env`,
