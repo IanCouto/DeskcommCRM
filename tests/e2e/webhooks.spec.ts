@@ -100,6 +100,21 @@ test.describe("webhooks & automações — fluxo completo", () => {
   // com diagnóstico.
   test.use({ actionTimeout: 10_000 });
 
+  // ⚠️ ESTA SPEC NÃO ENVIA NADA, E MESMO ASSIM DEPENDE DA JANELA DE ENVIO.
+  //
+  // A ação dela é "adicionar tag", que nunca é adiada. Mas a pré-checagem de
+  // adiamento do motor é ALL-OR-NOTHING sobre o evento: basta uma regra irmã
+  // com ação de WhatsApp no mesmo gatilho estar fora da janela para o evento
+  // INTEIRO ser abortado — e aí a tag nunca executa, nenhum run é gravado, e a
+  // asserção de "Sucesso" mais abaixo estoura as 12 tentativas.
+  //
+  // Foi exatamente o que aconteceu a partir das 22h BRT, em toda branch, por um
+  // dia inteiro. O seed declara a janela do rig (0h-24h, `garantirJanelaSempreAberta`),
+  // e é ele que tira a hora do CI de dentro da conta deste teste.
+  test.beforeAll(() => {
+    execFileSync("npx", ["tsx", "scripts/seed-e2e-numero-conectado.ts"], { stdio: "inherit" });
+  });
+
   test("cria fonte, cria automação, dispara lead real, confere atividade e kanban; agent sem acesso", async ({
     page,
     request,
