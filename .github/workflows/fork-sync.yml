@@ -4,14 +4,14 @@ name: Sincronizar com upstream (melgarafael)
 # e sem apagar trabalho: é sempre `merge`, nunca `reset`. Se der conflito, o
 # job falha e o GitHub avisa por e-mail — ninguém escolhe lado no automático.
 #
-# LIMITAÇÃO CONHECIDA: quando o merge do upstream toca .github/workflows/*,
-# o push falha — GITHUB_TOKEN não pode escrever workflow, e isso não é
-# concedível via `permissions:` (testado: `workflows: write` é rejeitado como
-# chave inválida pelo próprio schema; o run 33397579685 mostrou o erro real,
-# "refusing to allow a GitHub App to ... without `workflows` permission", que
-# só se resolve com PAT com escopo `workflow` ou GitHub App — nenhum dos dois
-# configurado neste fork). Nesses dias o job falha, avisa por e-mail, e a
-# sincronização vira manual (`gh api repos/<fork>/merge-upstream -f branch=main`).
+# Escreve com token de GitHub App (FORK_SYNC_APP_ID / FORK_SYNC_APP_PRIVATE_KEY),
+# nunca GITHUB_TOKEN — mesmo padrão do release.yml. Razão: quando o merge do
+# upstream toca .github/workflows/*, GitHub recusa push de GITHUB_TOKEN
+# mesmo com `contents: write` (medido no run 33397579685); `workflows: write`
+# não existe como chave de `permissions:` do workflow, só como escopo de
+# PAT/App. Sem o App configurado (secrets ausentes), o job falha cedo com
+# "appId option is required" e a sincronização vira manual (`gh api
+# repos/<fork>/merge-upstream -f branch=main`).
 
 on:
   schedule:
@@ -19,21 +19,30 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      - uses: actions/create-github-app-token@v3
+        id: token
+        with:
+          app-id: ${{ secrets.FORK_SYNC_APP_ID }}
+          private-key: ${{ secrets.FORK_SYNC_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: main
+          token: ${{ steps.token.outputs.token }}
 
       - name: Configurar git
         run: |
           git config user.name "fork-sync[bot]"
-          git config user.email "actions@github.com"
+          git config user.email "${{ steps.token.outputs.app-slug }}[bot]@users.noreply.github.com"
 
       - name: Buscar upstream
         run: |

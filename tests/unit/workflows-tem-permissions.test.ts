@@ -54,8 +54,6 @@ const DIR = join(process.cwd(), ".github/workflows");
 const ESCRITA_JUSTIFICADA: Record<string, string> = {
   "publish-image.yml::packages: write":
     "publica a imagem do app no GHCR — é o artefato que o self-hoster instala",
-  "fork-sync.yml::contents: write":
-    "só existe neste fork — dá `git push origin main` depois de mesclar upstream/main; nunca escreve no upstream",
 };
 
 interface Workflow {
