@@ -1,3 +1,5 @@
+import { empurrarAgendamentosAoGoogle } from "@/app/api/v1/cron/agenda-google-push/route";
+import { renovarAgendasDoGoogle } from "@/app/api/v1/cron/agenda-google-refresh/route";
 import { recoverStuckMessages } from "@/app/api/v1/cron/recover-stuck-messages/route";
 import { idsDoContatoEGemeos } from "@/lib/channels/contato-por-telefone";
 import { drainEventLog } from "@/lib/event-log/drain";
@@ -153,6 +155,21 @@ export async function executarTickDoRelogio(): Promise<{
   await uma("recover-stuck-messages", async () => {
     const summary = await recoverStuckMessages(admin, new Date(), "relogio");
     if (summary.failed > 0) mexeu = true;
+    return summary;
+  });
+
+  // Refresh ANTES da ida: no Hobby o cron de renovação também não roda, e
+  // empurrar com token vencido grava `reautenticar` na linha sem nunca chegar
+  // ao calendário. A ordem é a mesma do scheduler, só que no mesmo tick.
+  await uma("agenda-google-refresh", async () => {
+    const summary = await renovarAgendasDoGoogle(admin, { agora: new Date() });
+    if (summary.renovadas > 0 || summary.reautenticar > 0 || summary.falhas > 0) mexeu = true;
+    return summary;
+  });
+
+  await uma("agenda-google-push", async () => {
+    const summary = await empurrarAgendamentosAoGoogle(admin);
+    if (summary.publicados > 0 || summary.apagados > 0 || summary.falhas > 0) mexeu = true;
     return summary;
   });
 

@@ -16,6 +16,7 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { listaAgendamentos } from "@/lib/agenda/consulta";
+import { agendarIdaAoGoogleAposResposta } from "@/lib/agenda/google/disparar-ida";
 import { fail, ok } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { requireRole } from "@/lib/auth/require-role";
@@ -199,6 +200,11 @@ async function despachar<T>(
       },
       parsed.data,
     );
+    // DEPOIS da resposta: no Hobby o cron de ida não existe, então sem isto o
+    // compromisso nasce no CRM e nunca chega ao Google. `after()` não atrasa o
+    // 201 — a grade já pintou. Falha fica em `google_sync_error` e o relógio
+    // retenta. GET não passa por aqui.
+    agendarIdaAoGoogleAposResposta();
     return ok(resultado, { requestId, status });
   } catch (err) {
     if (err instanceof ApiError) {

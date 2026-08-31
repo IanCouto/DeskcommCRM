@@ -63,16 +63,24 @@ function autorizado(req: NextRequest): boolean {
   return aceitos.length > 0 && aceitos.some((s) => cabecalho === `Bearer ${s}`);
 }
 
-async function executar(req: NextRequest): Promise<Response> {
-  if (!autorizado(req)) {
-    return NextResponse.json(
-      { error: { code: "unauthenticated", message: "cron secret inválido" } },
-      { status: 401 },
-    );
-  }
+export type ResumoDaIda = {
+  candidatos: number;
+  publicados: number;
+  apagados: number;
+  falhas: number;
+  semConexao: number;
+};
 
-  const admin = createAdminClient();
-  const resumo = { candidatos: 0, publicados: 0, apagados: 0, falhas: 0, semConexao: 0 };
+/**
+ * A rodada em si — sem HTTP. O cron autentica e chama; o relógio do Hobby e o
+ * `after()` da marcação chamam direto. Uma função só: duas cópias da ida
+ * divergiriam no primeiro conserto, e foi exatamente assim que a ida já morreu
+ * uma vez (filtro PostgREST num sítio, teste noutro).
+ */
+export async function empurrarAgendamentosAoGoogle(
+  admin: ReturnType<typeof createAdminClient> = createAdminClient(),
+): Promise<ResumoDaIda> {
+  const resumo: ResumoDaIda = { candidatos: 0, publicados: 0, apagados: 0, falhas: 0, semConexao: 0 };
   /**
    * POR QUE as falhas falharam — e não só quantas.
    *
@@ -112,7 +120,7 @@ async function executar(req: NextRequest): Promise<Response> {
 
   if (erroLeitura) {
     logger.warn("[agenda-google-push] leitura falhou", { error: erroLeitura.message });
-    return NextResponse.json({ error: { code: "internal_error", message: erroLeitura.message } }, { status: 500 });
+    throw new Error(erroLeitura.message);
   }
 
   const linhas = (pendentes ?? []) as LinhaParaIda[];
@@ -120,7 +128,7 @@ async function executar(req: NextRequest): Promise<Response> {
   if (linhas.length === 0) {
     // Rodada vazia NÃO audita: o repo já pagou 95% do audit log em batida de
     // cron sem efeito. Auditar é para quando houve efeito.
-    return NextResponse.json({ data: resumo });
+    return resumo;
   }
 
   // Só de quem ainda é do time — mesma função que impede a leitura.
@@ -249,7 +257,23 @@ async function executar(req: NextRequest): Promise<Response> {
     });
   }
 
-  return NextResponse.json({ data: resumo });
+  return resumo;
+}
+
+async function executar(req: NextRequest): Promise<Response> {
+  if (!autorizado(req)) {
+    return NextResponse.json(
+      { error: { code: "unauthenticated", message: "cron secret inválido" } },
+      { status: 401 },
+    );
+  }
+  try {
+    const resumo = await empurrarAgendamentosAoGoogle();
+    return NextResponse.json({ data: resumo });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: { code: "internal_error", message } }, { status: 500 });
+  }
 }
 
 export async function GET(req: NextRequest): Promise<Response> {

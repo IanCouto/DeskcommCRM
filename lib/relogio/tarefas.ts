@@ -26,6 +26,16 @@ export const TAREFAS_DO_RELOGIO = [
     rotulo: "Destravar envios parados",
     porque: "Mensagem presa em «enviando» deixa de mentir progresso.",
   },
+  {
+    id: "agenda-google-refresh",
+    rotulo: "Renovar a conexão com o Google",
+    porque: "O token da agenda pessoal vence em cerca de uma hora.",
+  },
+  {
+    id: "agenda-google-push",
+    rotulo: "Mandar compromissos para o Google",
+    porque: "O que você marca aqui aparece na agenda do celular.",
+  },
 ] as const;
 
 export type IdDeTarefaDoRelogio = (typeof TAREFAS_DO_RELOGIO)[number]["id"];
