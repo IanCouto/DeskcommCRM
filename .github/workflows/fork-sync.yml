@@ -3,6 +3,12 @@ name: Sincronizar com upstream (melgarafael)
 # Traz a main do Rafael pra dentro da sua main automaticamente, sem force-push
 # e sem apagar trabalho: é sempre `merge`, nunca `reset`. Se der conflito, o
 # job falha e o GitHub avisa por e-mail — ninguém escolhe lado no automático.
+#
+# `workflows: write` além de `contents: write`: o upstream mexe com frequência
+# em .github/workflows/*, e o GitHub recusa push de GITHUB_TOKEN que toque
+# arquivo de workflow sem esse escopo extra, mesmo com contents: write —
+# medido no run 33397579685 ("refusing to allow a GitHub App to create or
+# update workflow ... without `workflows` permission").
 
 on:
   schedule:
@@ -11,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  workflows: write
 
 jobs:
   sync:
