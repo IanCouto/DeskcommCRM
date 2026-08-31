@@ -4,11 +4,14 @@ name: Sincronizar com upstream (melgarafael)
 # e sem apagar trabalho: é sempre `merge`, nunca `reset`. Se der conflito, o
 # job falha e o GitHub avisa por e-mail — ninguém escolhe lado no automático.
 #
-# `workflows: write` além de `contents: write`: o upstream mexe com frequência
-# em .github/workflows/*, e o GitHub recusa push de GITHUB_TOKEN que toque
-# arquivo de workflow sem esse escopo extra, mesmo com contents: write —
-# medido no run 33397579685 ("refusing to allow a GitHub App to create or
-# update workflow ... without `workflows` permission").
+# LIMITAÇÃO CONHECIDA: quando o merge do upstream toca .github/workflows/*,
+# o push falha — GITHUB_TOKEN não pode escrever workflow, e isso não é
+# concedível via `permissions:` (testado: `workflows: write` é rejeitado como
+# chave inválida pelo próprio schema; o run 33397579685 mostrou o erro real,
+# "refusing to allow a GitHub App to ... without `workflows` permission", que
+# só se resolve com PAT com escopo `workflow` ou GitHub App — nenhum dos dois
+# configurado neste fork). Nesses dias o job falha, avisa por e-mail, e a
+# sincronização vira manual (`gh api repos/<fork>/merge-upstream -f branch=main`).
 
 on:
   schedule:
@@ -17,7 +20,6 @@ on:
 
 permissions:
   contents: write
-  workflows: write
 
 jobs:
   sync:

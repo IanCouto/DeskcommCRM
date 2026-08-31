@@ -56,8 +56,6 @@ const ESCRITA_JUSTIFICADA: Record<string, string> = {
     "publica a imagem do app no GHCR — é o artefato que o self-hoster instala",
   "fork-sync.yml::contents: write":
     "só existe neste fork — dá `git push origin main` depois de mesclar upstream/main; nunca escreve no upstream",
-  "fork-sync.yml::workflows: write":
-    "o merge do upstream costuma tocar .github/workflows/*; sem este escopo o GitHub recusa o push do merge inteiro",
 };
 
 interface Workflow {
