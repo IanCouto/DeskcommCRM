@@ -25,6 +25,7 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
 
 import { loginComoAdmin, lerCreds, type CredsE2E } from "./helpers/login-admin";
 
+import { CONFERENCIAS_DE_SAIDA, CONFERENCIA_DE_ENTRADA } from "@/lib/ai/guardrails/lista-de-conferencia";
 let creds: CredsE2E = lerCreds();
 
 test.use({ locale: "pt-BR" });
@@ -126,18 +127,18 @@ test.describe("A aba do papel que organiza o sistema", () => {
 
     // Todas as conferências, não uma amostra.
     //
-    // ⚠️ ESTE NÚMERO É ESPELHO DE `lib/ai/guardrails/lista-de-conferencia.ts`, e
-    // ele mora em DOIS lugares: aqui e em `tests/unit/painel-de-seguranca.test.tsx`.
-    // Quem acrescentar uma conferência precisa mexer nos dois — o unit reprova na
-    // hora, este só no `e2e`, minutos depois e noutro job, e é fácil concluir que
-    // a falha é de ambiente.
+    // O NÚMERO É DERIVADO, NÃO ESCRITO. O painel renderiza as conferências de
+    // saída MAIS a de entrada, que é uma só e mora fora do array porque roda
+    // antes das outras, sobre o que CHEGA — `PainelDeSeguranca.tsx` a monta
+    // assim, e esta é a mesma expressão que `painel-de-seguranca.test.tsx` usa.
     //
-    // Foi o que aconteceu no PR #420 (@automatikpg-ux): ele acrescentou
-    // `agenda_stall`, atualizou o unit (que ele viu reprovar) e não tinha como
-    // saber deste. A conta é `CONFERENCIAS_DE_SAIDA.length + 1` — a de entrada —,
-    // e o próprio unit prova a igualdade exata entre o DOM e a lista.
+    // Era o literal `12` até este conserto, e o literal envelheceu em uma semana:
+    // o PR #420 (@automatikpg-ux) acrescentou `agenda_stall`, atualizou o unit —
+    // que reprova na hora — e não tinha como saber deste, que só reprova no
+    // `e2e`, minutos depois e noutro job. A `main` ficou vermelha por isso.
+    // Número escrito à mão envelhece calado; a expressão acompanha a lista.
     const itens = painel.locator('[data-testid^="item-conferencia-"]');
-    await expect(itens).toHaveCount(12);
+    await expect(itens).toHaveCount([...CONFERENCIAS_DE_SAIDA, CONFERENCIA_DE_ENTRADA].length);
 
     // EXATAMENTE DOIS interruptores — um por camada que custa dinheiro. Este caso
     // já afirmou ZERO, e a mudança é deliberada: enquanto o motor lia só o `.env`,
