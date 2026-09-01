@@ -1,17 +1,26 @@
 name: Sincronizar com upstream (melgarafael)
 
 # Traz a main do Rafael pra dentro da sua main automaticamente, sem force-push
-# e sem apagar trabalho: é sempre `merge`, nunca `reset`. Se der conflito, o
-# job falha e o GitHub avisa por e-mail — ninguém escolhe lado no automático.
+# e sem apagar trabalho: usa o endpoint `/merge-upstream`, que faz o merge no
+# servidor do GitHub — merge de verdade quando as duas mains divergiram, nunca
+# reset. Conflito devolve 409, o job falha e o GitHub avisa por e-mail; ninguém
+# escolhe lado no automático.
 #
-# Escreve com token de GitHub App (FORK_SYNC_APP_ID / FORK_SYNC_APP_PRIVATE_KEY),
-# nunca GITHUB_TOKEN — mesmo padrão do release.yml. Razão: quando o merge do
-# upstream toca .github/workflows/*, GitHub recusa push de GITHUB_TOKEN
-# mesmo com `contents: write` (medido no run 33397579685); `workflows: write`
-# não existe como chave de `permissions:` do workflow, só como escopo de
-# PAT/App. Sem o App configurado (secrets ausentes), o job falha cedo com
-# "appId option is required" e a sincronização vira manual (`gh api
-# repos/<fork>/merge-upstream -f branch=main`).
+# Por que NÃO clona mais nem dá `git push`: push de GITHUB_TOKEN é recusado
+# quando o merge toca `.github/workflows/*` (medido no run 33397579685), e foi
+# isso que levou este arquivo a depender de um GitHub App. Só que os secrets
+# desse App (FORK_SYNC_APP_ID / FORK_SYNC_APP_PRIVATE_KEY) existem apenas no
+# upstream, então aqui o job falhava todo dia em "app-id must be set to a
+# non-empty string" (run 33516415219) — sincronização automática que nunca
+# sincronizou nada. O `/merge-upstream` não empurra ref nenhuma: ele sincroniza
+# o fork com o parent, e por isso a restrição de escopo `workflow` não se aplica.
+#
+# Limitação conhecida, deliberada: commit criado com GITHUB_TOKEN não dispara
+# outros workflows, então "Publicar imagem Docker (GHCR)" não roda sozinho
+# depois deste sync. Enquanto o `.env` da VPS apontar para as tags do upstream
+# (ghcr.io/melgarafael/*), isso não muda nada — quem instala versão é o
+# update.sh. Se a VPS voltar a rodar ghcr.io/maugarciasa/*, publique pela tela
+# do Actions ou empurre um commit próprio na main.
 
 on:
   schedule:
@@ -25,38 +34,9 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
-      - uses: actions/create-github-app-token@v3
-        id: token
-        with:
-          app-id: ${{ secrets.FORK_SYNC_APP_ID }}
-          private-key: ${{ secrets.FORK_SYNC_APP_PRIVATE_KEY }}
-
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: main
-          token: ${{ steps.token.outputs.token }}
-
-      - name: Configurar git
-        run: |
-          git config user.name "fork-sync[bot]"
-          git config user.email "${{ steps.token.outputs.app-slug }}[bot]@users.noreply.github.com"
-
-      - name: Buscar upstream
-        run: |
-          git remote add upstream https://github.com/melgarafael/DeskcommCRM.git
-          git fetch upstream main
-
       - name: Mesclar upstream/main na main
-        run: |
-          set -e
-          if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "já está atualizado, nada a mesclar"
-            exit 0
-          fi
-          git merge upstream/main --no-edit
-
-      - name: Publicar
-        run: git push origin main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api "repos/${{ github.repository }}/merge-upstream" -f branch=main
