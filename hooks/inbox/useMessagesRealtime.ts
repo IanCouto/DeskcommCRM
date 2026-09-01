@@ -56,7 +56,10 @@ export function useMessagesRealtime(conversationId: string | null) {
 
   const onChange = useCallback(() => {
     if (conversationId) qc.invalidateQueries({ queryKey: ["messages", conversationId] });
-    qc.invalidateQueries({ queryKey: ["conversations"] });
+    // A lista NÃO é invalidada daqui: `fn_mark_conversation_message` já
+    // atualiza `conversations.last_message_at`, e o canal da lista escuta
+    // essa tabela. Invalidar as duas a cada mensagem dobrava o GET da inbox
+    // (Active CPU no Hobby) sem informação nova.
   }, [qc, conversationId]);
 
   const { status: realtimeStatus, ultimaEntrega } = useRealtimeChannel({

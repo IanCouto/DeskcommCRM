@@ -41,9 +41,13 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/mcp(\/.*)?$/,
   /^\/_next\//,
   /^\/favicon\.ico$/,
+  // Túnel do Sentry (`tunnelRoute: "/monitoring"`). O matcher do proxy já
+  // dispensa este path (Fluid Active CPU); a entrada aqui é o segundo gate
+  // se o matcher for alargado de novo.
+  /^\/monitoring(\/.*)?$/,
   // O ícone da aba (`app/icon.tsx`), que o `<head>` de TODA página pede —
   // inclusive o do `/login`, antes de existir sessão. Precisa de entrada
-  // própria porque o matcher do `proxy.ts:128` só dispensa caminho COM
+  // própria porque o matcher do proxy só dispensa caminho COM
   // extensão: `/favicon.ico` passa por ele, `/icon` não. Medido em produção
   // antes desta linha: `GET /icon` → 307 para `/login?next=%2Ficon`, enquanto
   // `/icon.png` (inexistente) devolvia 404 — a diferença é só a extensão.

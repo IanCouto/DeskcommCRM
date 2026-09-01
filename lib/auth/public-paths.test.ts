@@ -13,10 +13,14 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/api/v1/system/agent")).toBe(true);
   });
 
-  it("libera o tick do relógio Hobby (bearer, sem cookie)", () => {
-    expect(isPublicPath("/api/v1/system/relogio/tick")).toBe(true);
-    expect(isPublicPath("/api/v1/system/relogio")).toBe(false);
-    expect(isPublicPath("/api/v1/system/relogio/tick/extra")).toBe(false);
+  it("libera o túnel do Sentry — envelope sem sessão, auth não cabe", () => {
+    expect(isPublicPath("/monitoring")).toBe(true);
+    expect(isPublicPath("/monitoring/envelope")).toBe(true);
+  });
+
+  it("e não abre carona em /monitoring-secreto", () => {
+    expect(isPublicPath("/monitoring-secreto")).toBe(false);
+    expect(isPublicPath("/app/monitoring")).toBe(false);
   });
 
   it("a âncora `$` impede que um sub-path passe de carona", () => {

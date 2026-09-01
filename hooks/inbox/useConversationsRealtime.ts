@@ -143,6 +143,10 @@ export function useConversationsRealtime(
 
   const onChange = useCallback(() => {
     qc.invalidateQueries({ queryKey: ["conversations"] });
+    // Badges da Fila/Automático vinham de um poll de 30s. O canal já sabe que
+    // a lista mudou — invalidar aqui atualiza na hora e o intervalo vira só
+    // rede de segurança.
+    qc.invalidateQueries({ queryKey: ["conversation-counts"] });
   }, [qc]);
 
   // G4-01 (visibility_mode): a subscription postgres_changes HERDA a RLS de

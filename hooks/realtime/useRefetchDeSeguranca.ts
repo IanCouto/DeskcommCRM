@@ -126,7 +126,15 @@ export function useRefetchDeSeguranca<T>({
 
   useEffect(() => {
     if (!enabled) return;
-    const timer = setInterval(() => void verificar(), intervaloMs);
+    // Aba oculta: o intervalo NÃO busca. O React Query já faz isso nos
+    // `refetchInterval`; este timer era a exceção e no Hobby da Vercel cada
+    // tick é Function + JWT. Voltar para a aba dispara `verificar` na hora —
+    // é a mesma recuperação que `refetchOnWindowFocus` cobre no inbox.
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void verificar();
+    };
+    const timer = setInterval(tick, intervaloMs);
 
     // AO VOLTAR PARA A ABA, imediatamente: é o momento em que o usuário mais
     // acredita no que vê, e é justamente quando a tela pode estar mais velha —

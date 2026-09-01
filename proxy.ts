@@ -124,7 +124,10 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Run on all paths except static assets / Next internals.
-    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
+    // Next 16: proxy é Node (Fluid Active CPU), não Edge. Cada match é
+    // invocação. `/api/*` autentica sozinha (getUser na rota / bearer no
+    // cron); o túnel `/monitoring` é rewrite do Sentry. Entrar aqui neles
+    // cobrava JWT duas vezes na inbox e uma vez por envelope de erro.
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|monitoring(?:/|$)|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
   ],
 };

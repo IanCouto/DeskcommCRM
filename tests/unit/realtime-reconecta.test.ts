@@ -179,3 +179,15 @@ describe("a segunda rede: voltar para a aba", () => {
     expect(fonte).toMatch(/refetchOnWindowFocus: false/);
   });
 });
+
+describe("inbox não paga GET em dobro por mensagem", () => {
+  it("o canal de mensagens não invalida a lista — quem muda last_message_at já avisa", () => {
+    const fonte = readFileSync("hooks/inbox/useMessagesRealtime.ts", "utf8");
+    expect(fonte).not.toMatch(/invalidateQueries\(\{ queryKey: \["conversations"\] \}\)/);
+  });
+
+  it("o canal da lista invalida as contagens — senão o badge volta a ser só poll", () => {
+    const fonte = readFileSync("hooks/inbox/useConversationsRealtime.ts", "utf8");
+    expect(fonte).toMatch(/invalidateQueries\(\{ queryKey: \["conversation-counts"\] \}\)/);
+  });
+});
