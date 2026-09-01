@@ -119,6 +119,25 @@ describe("InboxFilters render — 3 visões + escopo", () => {
     expect(screen.getByRole("tab", { name: /Minhas/ })).toHaveTextContent("2");
     expect(screen.getByRole("tab", { name: /Todas/ })).toHaveTextContent("5");
   });
+
+  /**
+   * O defeito visível: `grid` + `minmax(0, 1fr)` partia a faixa em cinco
+   * colunas iguais na coluna de 272px. `Fechadas` e `Automático` transbordavam
+   * a célula e pintavam um por cima do outro. A faixa já sabe rolar
+   * (`TabsList`); o que falta é cada aba recusar encolher abaixo do rótulo.
+   */
+  it("as abas não encolhem abaixo do rótulo — senão Fechadas cobre Automático", () => {
+    setOrg("manager", "all");
+    render(<InboxFilters value={VALUE} onChange={() => {}} />);
+    const list = screen.getByRole("tablist");
+    expect(list.className.split(/\s+/)).not.toContain("grid");
+    expect(list.getAttribute("style") ?? "").not.toMatch(/grid-template-columns/i);
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab.className.split(/\s+/)).toContain("shrink-0");
+    }
+    expect(screen.getByRole("tab", { name: /Fechadas/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Automático/ })).toBeInTheDocument();
+  });
 });
 
 describe("InboxFilters — seletor de número e o filtro órfão", () => {

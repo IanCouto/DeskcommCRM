@@ -105,7 +105,7 @@ export function InboxFilters({ value, onChange }: Props) {
   }, [searchInput]);
 
   return (
-    <div className="space-y-3 border-b border-border bg-background px-3 py-3">
+    <div className="min-w-0 space-y-3 border-b border-border bg-background px-3 py-3">
       <div className="relative">
         <MagnifyingGlass
           size={14}
@@ -169,15 +169,23 @@ export function InboxFilters({ value, onChange }: Props) {
         value={value.tab}
         onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}
       >
-        <TabsList
-          className="grid h-8 w-full"
-          style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
-        >
+        {/*
+          Flex + shrink-0, não grid de colunas iguais. A faixa da lista no xl
+          tem 272px; cinco rótulos (`Fechadas`, `Automático 1`) não cabem em
+          `minmax(0, 1fr)` — a célula encolhe abaixo do texto e a aba vizinha
+          é pintada por cima. `TabsList` já rola no eixo X quando a fila
+          passa da largura; aqui só paramos de esmagar o conteúdo.
+        */}
+        <TabsList className="flex h-8 w-full min-w-0 justify-start">
           {tabs.map((tab) => {
             const meta = INBOX_TABS.find((t) => t.value === tab)!;
             const count = countFor[tab];
             return (
-              <TabsTrigger key={tab} value={tab} className="gap-1 text-[11px]">
+              <TabsTrigger
+                key={tab}
+                value={tab}
+                className="grow shrink-0 gap-1 px-1.5 text-[11px]"
+              >
                 {t(meta.label)}
                 {typeof count === "number" && count > 0 && (
                   <span className="text-[10px] tabular-nums text-muted-foreground">
