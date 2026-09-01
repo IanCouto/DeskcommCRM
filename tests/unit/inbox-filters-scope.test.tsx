@@ -121,19 +121,24 @@ describe("InboxFilters render — 3 visões + escopo", () => {
   });
 
   /**
-   * O defeito visível: `grid` + `minmax(0, 1fr)` partia a faixa em cinco
-   * colunas iguais na coluna de 272px. `Fechadas` e `Automático` transbordavam
-   * a célula e pintavam um por cima do outro. A faixa já sabe rolar
-   * (`TabsList`); o que falta é cada aba recusar encolher abaixo do rótulo.
+   * Dois modos de falha na mesma faixa de 272px: colunas iguais sobrepõem
+   * `Fechadas` e `Automático`; `shrink-0` + scroll pede uma barra por uns
+   * 8px. A aba encolhe (`min-w-0`) e recorta por dentro (`overflow-hidden`);
+   * a lista não rola (`overflow-x-hidden`).
    */
-  it("as abas não encolhem abaixo do rótulo — senão Fechadas cobre Automático", () => {
+  it("as abas cabem na faixa sem se sobrepor e sem barra de scroll", () => {
     setOrg("manager", "all");
     render(<InboxFilters value={VALUE} onChange={() => {}} />);
     const list = screen.getByRole("tablist");
-    expect(list.className.split(/\s+/)).not.toContain("grid");
+    const classes = list.className.split(/\s+/);
+    expect(classes).not.toContain("grid");
+    expect(classes).toContain("overflow-x-hidden");
     expect(list.getAttribute("style") ?? "").not.toMatch(/grid-template-columns/i);
     for (const tab of screen.getAllByRole("tab")) {
-      expect(tab.className.split(/\s+/)).toContain("shrink-0");
+      const tabClass = tab.className.split(/\s+/);
+      expect(tabClass).toContain("min-w-0");
+      expect(tabClass).toContain("overflow-hidden");
+      expect(tabClass).not.toContain("shrink-0");
     }
     expect(screen.getByRole("tab", { name: /Fechadas/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Automático/ })).toBeInTheDocument();

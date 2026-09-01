@@ -170,13 +170,13 @@ export function InboxFilters({ value, onChange }: Props) {
         onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}
       >
         {/*
-          Flex + shrink-0, não grid de colunas iguais. A faixa da lista no xl
-          tem 272px; cinco rótulos (`Fechadas`, `Automático 1`) não cabem em
-          `minmax(0, 1fr)` — a célula encolhe abaixo do texto e a aba vizinha
-          é pintada por cima. `TabsList` já rola no eixo X quando a fila
-          passa da largura; aqui só paramos de esmagar o conteúdo.
+          Cinco rótulos numa faixa de 272px. Grid de colunas iguais pintava
+          `Fechadas` em cima de `Automático`; `shrink-0` + o `overflow-x-auto`
+          do `TabsList` pedia scroll por uns 8px. `min-w-0` deixa encolher;
+          `overflow-hidden` na aba recorta o texto DENTRO do botão — não vaza
+          pra vizinha. `overflow-x-hidden` na lista mata a barra fantasma.
         */}
-        <TabsList className="flex h-8 w-full min-w-0 justify-start">
+        <TabsList className="flex h-8 w-full min-w-0 justify-start overflow-x-hidden p-0.5">
           {tabs.map((tab) => {
             const meta = INBOX_TABS.find((t) => t.value === tab)!;
             const count = countFor[tab];
@@ -184,7 +184,7 @@ export function InboxFilters({ value, onChange }: Props) {
               <TabsTrigger
                 key={tab}
                 value={tab}
-                className="grow shrink-0 gap-1 px-1.5 text-[11px]"
+                className="min-w-0 grow gap-0.5 overflow-hidden px-1 text-[11px]"
               >
                 {t(meta.label)}
                 {typeof count === "number" && count > 0 && (
