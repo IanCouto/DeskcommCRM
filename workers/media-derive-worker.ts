@@ -83,11 +83,9 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
   };
 
   try {
-    const dl = await admin.storage.from("whatsapp-media").download(msg.media_storage_path);
-    if (dl.error || !dl.data) throw new Error(`storage_download_failed: ${dl.error?.message ?? "no_data"}`);
-    const buffer = Buffer.from(await dl.data.arrayBuffer());
-
-    // Credencial BYOK da org p/ visão (imagem).
+    // Credencial ANTES do download: sem chave (env nem BYOK) não há o que
+    // derivar — baixar a mídia só para falhar 5 vezes poluía o log com
+    // `[media-derive] failed permanently` e marcava a mensagem `failed`.
     const llmCfg: LlmEdgeConfig = {
       anthropicApiKey: process.env.ANTHROPIC_API_KEY,
       openaiApiKey: process.env.OPENAI_API_KEY,
@@ -152,6 +150,10 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
       }
     }
 
+    const dl = await admin.storage.from("whatsapp-media").download(msg.media_storage_path);
+    if (dl.error || !dl.data) throw new Error(`storage_download_failed: ${dl.error?.message ?? "no_data"}`);
+    const buffer = Buffer.from(await dl.data.arrayBuffer());
+
     const deps = buildDeriveDeps(llm, openaiKey, row.organization_id);
 
     const text = await deriveMediaText(msg.type, buffer, msg.media_mime ?? "application/octet-stream", deps);
@@ -160,6 +162,9 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
       .eq("id", msg.id).eq("organization_id", msg.organization_id);
     return { consumer_key, status: "ok" };
   } catch (err) {
+    if (err instanceof Error && err.name === "llm_not_configured") {
+      return { consumer_key, status: "skipped", detail: "llm_not_configured" };
+    }
     const detail = err instanceof Error ? err.message : String(err);
     if (row.attempts >= DRAIN_MAX_ATTEMPTS - 1) {
       logger.error("[media-derive] failed permanently", { message_id: msg.id, detail });

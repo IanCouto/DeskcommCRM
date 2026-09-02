@@ -16,8 +16,10 @@
  *    do MODELO. O comprovante do cliente virava marcador e o aviso afirmava "o
  *    modelo openai/gpt-4o não enxerga imagens" — falso, e gravado para o
  *    operador ler.
- *  - `lib/env.ts` avisava no boot que a IA ia ficar muda por falta de chave —
- *    numa instalação em que ela não ia ficar.
+ *  - `lib/env.ts` avisava no boot que a IA ia ficar muda por falta de
+ *    Anthropic — numa instalação só-OpenRouter ela não ia ficar. O aviso
+ *    saiu: em serverless ele poluía o log a cada cold start, e a régua que
+ *    importa é `isAiGatewayConfigured()` (que já conta a OpenRouter).
  */
 import { readFileSync } from "node:fs";
 
@@ -85,14 +87,19 @@ describe("capacidade num roteador é do MODELO, não do provedor", () => {
   });
 });
 
-describe("o aviso de boot lê a mesma régua que a execução", () => {
-  it("OPENROUTER_API_KEY conta como chave de IA configurada", () => {
+describe("o boot não mente sobre OpenRouter", () => {
+  it("lib/env.ts não avisa mais que a IA está muda por falta de Anthropic", () => {
     const fonte = readFileSync("lib/env.ts", "utf8");
-    const condicao = /if \(!env\.AI_GATEWAY_API_KEY && !env\.ANTHROPIC_API_KEY([^)]*)\)/.exec(fonte);
-    expect(condicao, "não achei o aviso de chave de IA no lib/env.ts — instrumento cego").not.toBeNull();
+    expect(fonte).not.toMatch(/Nenhuma chave de IA configurada/);
+    expect(fonte).not.toMatch(/o agente vai pular toda resposta/);
+  });
+
+  it("isAiGatewayConfigured conta OPENROUTER_API_KEY", () => {
+    const fonte = readFileSync("lib/ai/gateway.ts", "utf8");
+    const fn = fonte.slice(fonte.indexOf("export function isAiGatewayConfigured"));
     expect(
-      condicao?.[1],
-      "o boot avisa que a IA está muda numa instalação só-OpenRouter, em que ela não está",
+      fn,
+      "sem OPENROUTER nesta régua, a instalação só-OpenRouter é tratada como IA desligada",
     ).toContain("OPENROUTER_API_KEY");
   });
 });

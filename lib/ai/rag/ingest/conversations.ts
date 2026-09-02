@@ -141,10 +141,6 @@ export async function ingestConversationsBatch(
   // chave pela tela era tratada como se não tivesse nenhuma.
   const chave = await resolverChaveDeEmbedding(organizationId, "embedding_indexar");
   if (!chave) {
-    console.warn(
-      "[kb-conversations] organização sem chave de embedding; lote adiado",
-      organizationId,
-    );
     return { processed: 0, flaggedReview: 0, skipped: 0, embeddingSkipped: true };
   }
 

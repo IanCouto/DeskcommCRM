@@ -71,6 +71,7 @@ vi.mock("@/lib/agent-engine/edge/llm/credentials", () => ({
 
 import { deriveMessageMedia } from "@/workers/media-derive-worker";
 import { deriveMediaText } from "@/lib/messaging/media/derive";
+import { resolveOrgLlmConfig } from "@/lib/agent-engine/edge/llm/credentials";
 
 function eventRow(attempts = 0) {
   return {
@@ -122,6 +123,25 @@ describe("deriveMessageMedia", () => {
     const r = await deriveMessageMedia(eventRow(4));
     expect(r.status).toBe("error");
     expect(updateEqMock).toHaveBeenCalledWith(
+      expect.objectContaining({ media_derived_status: "failed" }),
+    );
+  });
+
+  it("sem credencial LLM pula sem baixar, sem retry e sem marcar failed", async () => {
+    vi.mocked(resolveOrgLlmConfig).mockRejectedValueOnce(
+      Object.assign(new Error("org sem credencial LLM utilizável"), {
+        name: "llm_not_configured",
+      }),
+    );
+    const r = await deriveMessageMedia(eventRow(4));
+    expect(r).toEqual({
+      consumer_key: "media_derive_v1",
+      status: "skipped",
+      detail: "llm_not_configured",
+    });
+    expect(downloadMock).not.toHaveBeenCalled();
+    expect(deriveMediaText).not.toHaveBeenCalled();
+    expect(updateEqMock).not.toHaveBeenCalledWith(
       expect.objectContaining({ media_derived_status: "failed" }),
     );
   });

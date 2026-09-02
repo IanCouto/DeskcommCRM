@@ -26,7 +26,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-import { resolveLanguageModel } from "@/lib/ai/gateway";
+import { isAiGatewayConfigured, resolveLanguageModel } from "@/lib/ai/gateway";
 
 beforeEach(() => {
   for (const k of Object.keys(envMock)) delete envMock[k];
@@ -75,5 +75,21 @@ describe("resolveLanguageModel", () => {
     // Só OpenAI configurada, mas o id pede Anthropic: não dá para atender.
     envMock.OPENAI_API_KEY = "sk-openai";
     expect(resolveLanguageModel("anthropic/claude-haiku-4-5")).toBeNull();
+  });
+});
+
+describe("isAiGatewayConfigured", () => {
+  it("sem chave nenhuma é false — workers devem pular, não chamar o provider", () => {
+    expect(isAiGatewayConfigured()).toBe(false);
+  });
+
+  it("ANTHROPIC_API_KEY sozinha já liga o chat", () => {
+    envMock.ANTHROPIC_API_KEY = "sk-ant-xxx";
+    expect(isAiGatewayConfigured()).toBe(true);
+  });
+
+  it("OPENAI_API_KEY sozinha NÃO liga o chat (embeddings/transcrição, não o bot)", () => {
+    envMock.OPENAI_API_KEY = "sk-openai";
+    expect(isAiGatewayConfigured()).toBe(false);
   });
 });
