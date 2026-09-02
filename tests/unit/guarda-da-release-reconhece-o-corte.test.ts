@@ -102,21 +102,47 @@ function commit(mensagem: string, autor = "Alguém do time") {
  * `HEAD^2` viraria `<sha>^2` só pela metade.
  */
 function decisaoPara(sha: string): string {
-  const script = bashDaGuarda()
-    // A versão vem do CHANGELOG por um script de TS que não existe no repo
-    // sintético; ela é irrelevante aqui e fica num número sem tag, para não
-    // sair pelo primeiro `if`.
-    .replace(/^\s*versao=\$\(.*\)$/m, 'versao="999.999.999"')
+  const original = bashDaGuarda();
+
+  // A versão vem do CHANGELOG por um script de TS que não existe no repo
+  // sintético; ela é irrelevante aqui e fica num número sem tag, para não sair
+  // pelo primeiro `if`.
+  //
+  // ⚠️ `[^\n]*` e não `.*$`: com `$` e a flag `m`, um `\r` de fim de linha faz
+  // a âncora não casar, a substituição vira NO-OP SILENCIOSA, e o script tenta
+  // rodar `pnpm exec tsx` dentro do repositório temporário — que não tem
+  // `scripts/`. O sintoma é um `Command failed` sem explicação, e foi assim que
+  // este teste passou na minha máquina e reprovou no CI.
+  const script = original
+    .replace(/^[ \t]*versao=\$\([^\n]*\)[ \t\r]*$/m, 'versao="999.999.999"')
     .replace(/HEAD\^2/g, `${sha}^2`)
     .replace(/HEAD\^/g, `${sha}^`)
     .replace(/\bHEAD\b/g, sha);
 
-  const saida = execFileSync("bash", ["-c", script], {
-    cwd: repo,
-    encoding: "utf8",
-    env: { ...process.env, GITHUB_OUTPUT: "/dev/stdout" },
-  });
-  return /cortar=(\w+)/.exec(saida)?.[1] ?? "(nenhuma decisão)";
+  // A substituição que não acontece tem de gritar, não sumir.
+  expect(script, "a linha `versao=$(...)` não foi substituída — o script rodaria o cortar-release de verdade")
+    .not.toMatch(/cortar-release\.ts/);
+
+  try {
+    const saida = execFileSync("bash", ["-c", script], {
+      cwd: repo,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_OUTPUT: "/dev/stdout" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return /cortar=(\w+)/.exec(saida)?.[1] ?? "(nenhuma decisão)";
+  } catch (err) {
+    // `execFileSync` joga fora o stderr na mensagem padrão, e sem ele o CI
+    // devolve só "Command failed: bash -c set -euo pipefail". Diagnóstico que
+    // não chega ao log é diagnóstico que não existe.
+    const e = err as { stderr?: Buffer | string; stdout?: Buffer | string; status?: number };
+    const detalhe = [
+      `exit=${e.status ?? "?"}`,
+      `stderr: ${String(e.stderr ?? "").trim() || "(vazio)"}`,
+      `stdout: ${String(e.stdout ?? "").trim() || "(vazio)"}`,
+    ].join("\n");
+    throw new Error(`a guarda derrubou o passo para ${sha}\n${detalhe}`);
+  }
 }
 
 let mergeDaReleaseComCorrida = "";

@@ -189,6 +189,9 @@ jobs:
                 echo "${f}"
               fi
             done
+            # Fecha a substituição com status conhecido, para que o `set -e` do
+            # passo nunca dependa de qual foi o último `grep` do laço.
+            true
           )
 
           echo "fragmentos removidos por este commit: ${removidos}"
