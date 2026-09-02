@@ -47,7 +47,7 @@ import {
   planejarSincronizacao,
   type ModeloExistente,
 } from "@/lib/ai/catalogo/sincronizar";
-import { env } from "@/lib/env";
+import { cronAutorizado } from "@/lib/auth/cron-bearer";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -126,15 +126,9 @@ async function buscarDaOpenRouter(): Promise<ModeloDaOpenRouter[]> {
   return json.data;
 }
 
-function autorizado(req: NextRequest): boolean {
-  const esperado = env.INTERNAL_CRON_SECRET || env.INTERNAL_SECRET;
-  if (!esperado) return false; // fail-closed
-  return req.headers.get("authorization") === `Bearer ${esperado}`;
-}
-
 async function handler(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
-  if (!autorizado(req)) {
+  if (!cronAutorizado(req)) {
     return fail("unauthorized", "cron secret ausente ou inválido", 401, { requestId });
   }
   try {

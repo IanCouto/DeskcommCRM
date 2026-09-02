@@ -10,8 +10,7 @@
  * quebrar crontab antigo.
  *
  * Auth: a Vercel manda Authorization Bearer CRON_SECRET. Os handlers aceitam
- * INTERNAL_CRON_SECRET ou INTERNAL_SECRET — o CRON_SECRET do dashboard tem
- * que ser o mesmo valor de um dos dois, senão cada tick vira 403 em silêncio.
+ * CRON_SECRET, INTERNAL_CRON_SECRET ou INTERNAL_SECRET (`lib/auth/cron-bearer.ts`).
  */
 
 import type { VercelConfig } from "@vercel/config/v1";

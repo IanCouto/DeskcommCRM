@@ -74,6 +74,12 @@ const schema = z.object({
   INTERNAL_SECRET: required("INTERNAL_SECRET"),
   /** Optional dedicated secret for cron endpoints (S-06.07 onwards). */
   INTERNAL_CRON_SECRET: z.string().optional().default(""),
+  /**
+   * O que a Vercel coloca no `Authorization` de cada cron nativo. Os handlers
+   * aceitam este valor além dos dois internos — senão o tick dispara e toma
+   * 403 quando o dashboard não copiou CRON_SECRET = INTERNAL_*.
+   */
+  CRON_SECRET: z.string().optional().default(""),
 
   /**
    * Retenção do arquivo do corpo cru dos webhooks (`webhook_events_log`).

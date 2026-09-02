@@ -39,7 +39,7 @@ import { configuracaoDoGoogle } from "@/lib/agenda/google/config";
 import { classificarErroDoGoogle, estadoDaConexaoApos } from "@/lib/agenda/google/erros";
 import { fundirTokens, precisaRenovar, type TokenDoGoogle } from "@/lib/agenda/google/oauth";
 import { renovarToken } from "@/lib/agenda/google/token";
-import { env } from "@/lib/env";
+import { segredosDeCron } from "@/lib/auth/cron-bearer";
 
 export const dynamic = "force-dynamic";
 
@@ -205,7 +205,7 @@ async function marcarConexao(
 
 function autorizado(req: NextRequest): boolean {
   const cabecalho = req.headers.get("authorization") ?? "";
-  const aceitos = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
+  const aceitos = segredosDeCron();
   // Fail-closed: sem segredo configurado, ninguém entra.
   return aceitos.length > 0 && aceitos.some((s) => cabecalho === `Bearer ${s}`);
 }

@@ -15,7 +15,7 @@ import { z } from "zod";
 
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
-import { env } from "@/lib/env";
+import { segredosDeCron } from "@/lib/auth/cron-bearer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHANGELOG_MAX_BYTES } from "@/lib/system/changelog";
 import { canTransition, type RunStatus } from "@/lib/system/update-run";
@@ -61,7 +61,7 @@ const runResult = z.object({
 const body = z.discriminatedUnion("kind", [heartbeat, runProgress, runResult]);
 
 function secretMatches(provided: string): boolean {
-  const accepted = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
+  const accepted = segredosDeCron();
   return accepted.some((expected) => {
     const a = Buffer.from(provided);
     const b = Buffer.from(expected);

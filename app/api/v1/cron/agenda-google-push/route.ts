@@ -30,7 +30,7 @@ import { apenasDeMembrosAtivos } from "@/lib/agenda/google/membros";
 import { apagarNoGoogle, publicarNoGoogle } from "@/lib/agenda/google/escrita";
 import type { AgendamentoParaGoogle } from "@/lib/agenda/google/evento";
 import { audit } from "@/lib/audit";
-import { env } from "@/lib/env";
+import { segredosDeCron } from "@/lib/auth/cron-bearer";
 import { logger } from "@/lib/logger";
 import { PROVEDOR_GOOGLE } from "@/lib/agenda/tipos";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -58,7 +58,7 @@ interface LinhaParaIda {
 
 function autorizado(req: NextRequest): boolean {
   const cabecalho = req.headers.get("authorization") ?? "";
-  const aceitos = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
+  const aceitos = segredosDeCron();
   // Fail-closed: sem segredo configurado, ninguém entra.
   return aceitos.length > 0 && aceitos.some((s) => cabecalho === `Bearer ${s}`);
 }

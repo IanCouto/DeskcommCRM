@@ -16,7 +16,7 @@ import type { NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
-import { env } from "@/lib/env";
+import { segredosDeCron } from "@/lib/auth/cron-bearer";
 import { HEARTBEAT_TIMEOUT_MINUTES } from "@/lib/routing/eligibility";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const provided = authHeader.startsWith("Bearer ")
     ? authHeader.slice("Bearer ".length).trim()
     : "";
-  const accepted = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
+  const accepted = segredosDeCron();
   if (accepted.length === 0 || !provided || !accepted.includes(provided)) {
     return fail("forbidden", "Cron secret missing or invalid.", 403, { requestId });
   }

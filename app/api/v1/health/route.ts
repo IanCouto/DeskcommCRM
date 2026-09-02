@@ -25,6 +25,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { env } from "@/lib/env";
+import { segredosDeCron } from "@/lib/auth/cron-bearer";
 import { alvoDe, classificarFalhaDeAlcance, type FalhaDeAlcance } from "@/lib/net/alcance";
 
 export const dynamic = "force-dynamic";
@@ -184,7 +185,7 @@ function segredoInternoConfere(req: NextRequest): boolean {
   const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
   const fornecido = bearer || (req.headers.get("x-cron-secret")?.trim() ?? "");
   if (!fornecido) return false;
-  const aceitos = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
+  const aceitos = segredosDeCron();
   return aceitos.some((esperado) => {
     const a = Buffer.from(fornecido);
     const b = Buffer.from(esperado);

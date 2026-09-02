@@ -61,7 +61,7 @@ import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { classificarErroDoGoogle } from "@/lib/agenda/google/erros";
 import { doEventoDoGoogle, ehIcalUidNosso } from "@/lib/agenda/google/evento";
 import { listarEventos } from "@/lib/agenda/google/eventos-remotos";
-import { env } from "@/lib/env";
+import { segredosDeCron } from "@/lib/auth/cron-bearer";
 
 export const dynamic = "force-dynamic";
 
@@ -299,7 +299,7 @@ export async function sincronizarAgendasDoGoogle(
 
 function autorizado(req: NextRequest): boolean {
   const cabecalho = req.headers.get("authorization") ?? "";
-  const aceitos = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
+  const aceitos = segredosDeCron();
   return aceitos.length > 0 && aceitos.some((s) => cabecalho === `Bearer ${s}`);
 }
 

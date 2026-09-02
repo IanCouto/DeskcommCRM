@@ -10,7 +10,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { loadAuthUser } from "@/lib/auth/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { env } from "@/lib/env";
+import { segredosDeCron } from "@/lib/auth/cron-bearer";
 import { executarTickDoRelogio } from "@/lib/relogio/executar";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ function bearerValido(req: NextRequest): boolean {
   const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
   const provided = bearer || (req.headers.get("x-cron-secret")?.trim() ?? "");
   if (!provided) return false;
-  const accepted = [env.INTERNAL_CRON_SECRET, env.INTERNAL_SECRET].filter(Boolean);
+  const accepted = segredosDeCron();
   return accepted.some((expected) => {
     const a = Buffer.from(provided);
     const b = Buffer.from(expected);

@@ -18,6 +18,7 @@ import type { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { LOTE_PADRAO, podarArquivoDeWebhooks } from "@/lib/channels/retencao-do-arquivo";
 import { podarHistoricoDeCaptacao } from "@/lib/webhooks/retencao-da-captacao";
+import { cronAutorizado } from "@/lib/auth/cron-bearer";
 import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -28,14 +29,7 @@ const LOTE_MAXIMO = 5_000;
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
 
-  const auth = req.headers.get("authorization") ?? "";
-  const provided = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
-
-  const aceitos: string[] = [];
-  if (env.INTERNAL_CRON_SECRET) aceitos.push(env.INTERNAL_CRON_SECRET);
-  if (env.INTERNAL_SECRET) aceitos.push(env.INTERNAL_SECRET);
-
-  if (aceitos.length === 0 || !provided || !aceitos.includes(provided)) {
+  if (!cronAutorizado(req)) {
     return fail("forbidden", "Cron secret missing or invalid.", 403, { requestId });
   }
 
