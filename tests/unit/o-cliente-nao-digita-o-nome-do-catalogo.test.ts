@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ordenarPorRelevancia, pontuar, tokenizar } from "@/lib/catalogo/busca";
+import { buscarComRelaxamento, ordenarPorRelevancia, pontuar, tokenizar } from "@/lib/catalogo/busca";
 
 /**
  * O CLIENTE NÃO DIGITA O NOME DO CATÁLOGO.
@@ -101,6 +101,72 @@ describe("a palavra é difusa — o cliente erra a digitação", () => {
 
   it("acha pelo código interno, que é como a loja pergunta", () => {
     expect(nomes("IP15P-256-TIT")).toContain("iPhone 15 Pro 256GB Titânio");
+  });
+});
+
+describe("o número que NÃO é atributo não pode zerar a busca", () => {
+  /**
+   * O filtro numérico existe para o 128 não virar 256. Mas ele tratava TODO
+   * número da frase como atributo, e o cliente diz números que não são
+   * atributo de produto nenhum. Medido no catálogo real de uma loja:
+   *
+   *     "quero 2 iphone 15"  ->  0 resultados
+   *
+   * Zero resultado num pedido de compra explícito é o pior desfecho possível:
+   * o agente responde "não encontrei" para quem estava comprando.
+   *
+   * A regra se calibra sozinha no catálogo — um número só filtra se APARECE em
+   * algum produto.
+   */
+  it('"quero 2 iphone 15" acha o iPhone 15 — o "2" é quantidade, não capacidade', () => {
+    expect(nomes("quero 2 iphone 15")).toContain("iPhone 15 128GB Preto");
+  });
+
+  it('"tenho 3000 pra gastar num iphone" não zera por causa do orçamento', () => {
+    const r = nomes("tenho 3000 pra gastar num iphone");
+    expect(r.length).toBeGreaterThan(0);
+    expect(r.every((n) => n.startsWith("iPhone"))).toBe(true);
+  });
+
+  it("⚠️ o número que EXISTE no catálogo continua eliminando, e devolve VAZIO", () => {
+    // "512" está no catálogo (no MacBook), então é vocabulário de atributo:
+    // quem pede um iPhone de 512 recebe vazio, que é a resposta certa.
+    const comMacBook = [...CATALOGO, { codigo: "MBP-512", nome: "MacBook Pro 512GB", marca: "Apple", categoria: "Notebook" }];
+    expect(ordenarPorRelevancia(comMacBook, "iphone 15 512")).toEqual([]);
+  });
+
+  it("⚠️ NA LOJA QUE NÃO TEM 512 EM LUGAR NENHUM, o achado vem MARCADO como relaxado", () => {
+    // O contraexemplo que derruba a regra ingênua de "descartar o número que o
+    // catálogo não conhece": numa loja pequena e homogênea — só 128 e 256 — o
+    // 512 deixaria de ser vocabulário, sumiria do filtro, e quem pediu 512
+    // receberia o preço do 128 EM SILÊNCIO. É o erro que esta busca existe para
+    // não cometer, e loja pequena é o cliente deste produto.
+    //
+    // A busca acha, mas DIZ que ignorou o 512. Quem chama tem de confirmar com
+    // o cliente em vez de responder como se fosse o pedido.
+    const r = buscarComRelaxamento(CATALOGO, "iphone 15 pro 512");
+    expect(r.ignorados).toEqual(["512"]);
+    expect(r.achados.length).toBeGreaterThan(0);
+  });
+
+  it("a busca que acha SEM relaxar não marca nada (controle positivo)", () => {
+    // Sem este caso, "marca sempre" satisfaria o anterior — e aí o agente
+    // pediria confirmação de tudo, que é ruído até virar ignorado.
+    const r = buscarComRelaxamento(CATALOGO, "iphone 15 128");
+    expect(r.ignorados).toEqual([]);
+    expect(r.achados.map((a) => a.produto.nome)).toEqual(["iPhone 15 128GB Preto"]);
+  });
+
+  it('"quero 2 iphone 15" vem marcado: o "2" foi ignorado', () => {
+    const r = buscarComRelaxamento(CATALOGO, "quero 2 iphone 15");
+    expect(r.ignorados).toEqual(["2"]);
+    expect(r.achados.length).toBeGreaterThan(0);
+  });
+
+  it("consulta que vira só quantidade não devolve o catálogo inteiro", () => {
+    // Descartar todos os números pode esvaziar a consulta. Devolver tudo seria
+    // pior que devolver nada: o agente listaria 50 produtos para quem disse "2".
+    expect(nomes("quero 2")).toEqual([]);
   });
 });
 

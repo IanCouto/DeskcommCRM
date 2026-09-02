@@ -12,7 +12,7 @@
 import { z } from "zod";
 
 import type { McpToolDefinition } from "../types";
-import { ordenarPorRelevancia } from "@/lib/catalogo/busca";
+import { buscarComRelaxamento } from "@/lib/catalogo/busca";
 
 // ---------------------------------------------------------------------------
 // pedidos de um cliente
@@ -78,6 +78,43 @@ function precoLegivel(cents: number, moeda: string): string {
   return moeda === "BRL" ? `R$ ${valor}` : `${moeda} ${valor}`;
 }
 
+/**
+ * O aviso que a busca manda junto com o resultado.
+ *
+ * ⚠️ OS DOIS SOMAM, NÃO SE EXCLUEM — e a ordem importa. Eram `if/else` com o
+ * empate ganhando, e a precedência reabria justamente o buraco que o
+ * relaxamento veio fechar. Medido: "iphone 15 pro 512" numa loja sem nenhum 512
+ * relaxa, acha o 128 e o 256, os dois empatam em 1.000 — e o agente recebia
+ * "pergunte qual é" em vez de "não há 512 aqui". Ele perguntaria "128 ou 256?"
+ * a quem pediu 512.
+ *
+ * E não é coincidência rara: os dois coincidem SEMPRE que a variante ausente
+ * empata os candidatos restantes, que é o formato do caso.
+ *
+ * O relaxamento vem primeiro porque é a restrição mais forte: saber que a loja
+ * não tem o que foi pedido muda a resposta inteira; saber qual dos dois é
+ * apenas a próxima pergunta.
+ */
+export function avisosDaBusca(input: { empate: boolean; ignorados: readonly string[] }): string {
+  const avisos: string[] = [];
+  if (input.ignorados.length > 0) {
+    avisos.push(
+      `não há produto com ${input.ignorados.join(" nem ")} no catálogo desta loja. ` +
+        "O que está aqui foi encontrado IGNORANDO esse número. Se ele era a capacidade, o " +
+        "tamanho ou o modelo que a pessoa pediu, diga que a loja não tem essa opção — " +
+        "NÃO responda o preço destes como se fossem o que ela pediu. Se era quantidade ou " +
+        "orçamento, siga normalmente.",
+    );
+  }
+  if (input.empate) {
+    avisos.push(
+      "mais de um produto casa igualmente o que a pessoa disse, e o preço deles é diferente. " +
+        "Pergunte qual é antes de responder valor.",
+    );
+  }
+  return avisos.join(" ");
+}
+
 export const crmSearchProducts: McpToolDefinition<typeof produtosInputShape> = {
   name: "crm_search_products",
   description:
@@ -124,7 +161,7 @@ export const crmSearchProducts: McpToolDefinition<typeof produtosInputShape> = {
       quantidade: number;
     };
 
-    const achados = ordenarPorRelevancia((data ?? []) as Linha[], input.termo);
+    const { achados, ignorados } = buscarComRelaxamento((data ?? []) as Linha[], input.termo);
 
     // `controla_estoque` é o conserto de uma armadilha da versão anterior, que
     // filtrava por quantidade sempre: numa loja que não conta estoque (decant de
@@ -149,6 +186,8 @@ export const crmSearchProducts: McpToolDefinition<typeof produtosInputShape> = {
     // casa o Pro e o Pro Max igualmente, e a diferença entre eles é o preço.
     const empate = topo.length > 1 && topo[0]!.nota === topo[1]!.nota;
 
+    const mensagem = avisosDaBusca({ empate, ignorados });
+
     return {
       produtos: topo.map(({ produto }) => ({
         codigo: produto.codigo,
@@ -160,13 +199,12 @@ export const crmSearchProducts: McpToolDefinition<typeof produtosInputShape> = {
         disponivel: !produto.controla_estoque || produto.quantidade > 0,
       })),
       empate,
-      ...(empate
-        ? {
-            mensagem:
-              "mais de um produto casa igualmente o que a pessoa disse, e o preço deles é diferente. " +
-              "Pergunte qual é antes de responder valor.",
-          }
-        : {}),
+      // Relaxamento é o irmão do empate: nos dois a busca sabe que a resposta
+      // NÃO é exatamente o que foi pedido, e nos dois quem decide é a pessoa.
+      // A diferença é o que falta — no empate, qual das opções; aqui, se o
+      // número que sumiu importava.
+      ...(ignorados.length > 0 ? { numeros_ignorados: ignorados } : {}),
+      ...(mensagem ? { mensagem } : {}),
     };
   },
 };
