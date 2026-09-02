@@ -39,7 +39,16 @@ describe("os dois avisos somam, e o relaxamento vem primeiro", () => {
     // resposta inteira muda. "Qual dos dois" é a pergunta seguinte, e só faz
     // sentido depois.
     const m = avisosDaBusca({ empate: true, ignorados: ["512"] });
-    expect(m.indexOf("não há produto")).toBeLessThan(m.indexOf("Pergunte qual é"));
+    const ondeRelax = m.indexOf("não há produto");
+    const ondeEmpate = m.indexOf("Pergunte qual é");
+
+    // ⚠️ AS DUAS PRESENÇAS PRIMEIRO, E ISSO NÃO É ZELO. Só o `toBeLessThan`
+    // passa VAZIO quando o relaxamento some: `indexOf` devolve -1, e -1 é menor
+    // que qualquer posição. Medido — a sabotagem que apaga o relaxamento
+    // deixava este caso VERDE, e ele é justamente o que deveria acusá-la.
+    expect(ondeRelax, "o aviso de relaxamento sumiu da mensagem").toBeGreaterThanOrEqual(0);
+    expect(ondeEmpate, "o aviso de empate sumiu da mensagem").toBeGreaterThanOrEqual(0);
+    expect(ondeRelax).toBeLessThan(ondeEmpate);
   });
 
   it("cada um sozinho continua saindo sozinho", () => {
