@@ -79,6 +79,9 @@ export const DICIONARIO: Traducoes = {
   Buscar: { es: "Buscar" },
 
   // ─── Inbox: filtros e lista ───
+  "Buscar por nome, telefone ou mensagem…": {
+    es: "Buscar por nombre, teléfono o mensaje…",
+  },
   "Buscar mensagens…": { es: "Buscar mensajes…" },
   "Todos os números": { es: "Todos los números" },
   "Todas as tags": { es: "Todas las etiquetas" },
