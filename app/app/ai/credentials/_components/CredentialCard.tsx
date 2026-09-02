@@ -132,7 +132,7 @@ export function CredentialCard({ credential, canWrite, usageCount }: Props) {
       <dl className="grid grid-cols-2 gap-2 text-xs">
         <div>
           <dt className="text-muted-foreground">{t("Modelos")}</dt>
-          <dd className="font-mono">{credential.models_available ?? "—"}</dd>
+          <dd className="font-mono">{credential.models_available?.length ?? "—"}</dd>
         </div>
         <div>
           <dt className="text-muted-foreground">{t("Em uso por")}</dt>

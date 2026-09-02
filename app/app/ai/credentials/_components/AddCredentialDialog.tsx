@@ -104,7 +104,7 @@ export function AddCredentialDialog({ open, onOpenChange }: Props) {
         const justCreated = fresh?.find((c) => c.id === res.data.id);
         if (justCreated?.models_available != null) {
           toast.success(
-            `${t("Validada")} — ${justCreated.models_available} ${t("modelos disponíveis.")}`,
+            `${t("Validada")} — ${justCreated.models_available.length} ${t("modelos disponíveis.")}`,
           );
         } else if (justCreated?.validation_error) {
           toast.error(`${t("Validação falhou")}: ${justCreated.validation_error}`);
