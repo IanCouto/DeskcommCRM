@@ -162,6 +162,26 @@ function decisaoPara(sha: string): string {
   }
 }
 
+/**
+ * Roda a guarda esperando que ela RECUSE, e devolve o que ela disse.
+ *
+ * ⚠️ Existe porque `expect(...).toThrow()` sozinho é VÁCUO: qualquer coisa que
+ * derrube o bash faz o caso passar. Foi exatamente o que aconteceu por dois
+ * runs seguidos — o `/dev/stdout` matava o script antes de a guarda decidir, e
+ * os casos de recusa passavam pelo motivo errado enquanto os de decisão
+ * falhavam. Um teste que aceita qualquer falha não distingue a guarda
+ * funcionando da guarda quebrada.
+ */
+function recusaPara(sha: string): { status: number; saida: string } {
+  try {
+    decisaoPara(sha);
+  } catch (err) {
+    const m = /exit=(\d+)/.exec(String((err as Error).message));
+    return { status: Number(m?.[1] ?? -1), saida: String((err as Error).message) };
+  }
+  throw new Error(`a guarda NÃO recusou ${sha} — ela decidiu, quando devia ter derrubado o passo`);
+}
+
 let mergeDaReleaseComCorrida = "";
 let mergeDePrComum = "";
 let commitDeFeature = "";
@@ -267,7 +287,10 @@ describe("o que SOBRA da release também decide — e foi um cético que achou i
     git(["checkout", "-q", "main"]);
     git(["merge", "-q", "--no-ff", "-m", "Merge pull request #1000 from release/8.8.8", ponta]);
 
-    expect(() => decisaoPara(git(["rev-parse", "HEAD"]))).toThrow();
+    const r = recusaPara(git(["rev-parse", "HEAD"]));
+    expect(r.status, "a guarda tem de sair com 1, e não morrer por outro motivo").toBe(1);
+    expect(r.saida).toMatch(/exige_acao/);
+    expect(r.saida).toMatch(/e-obrigatorio\.md/);
   });
 
   it("CORTA quando o que sobra é inofensivo (controle positivo)", () => {
@@ -300,7 +323,10 @@ describe("a guarda recusa ALTO, e não em silêncio, quem apaga fragmento sem se
     writeFileSync(join(repo, "CHANGELOG.md"), "# Changelog\n\n## [999.999.999]\n");
     const forjado = commit("feat: parece uma release e não é", "Fulano de Tal");
 
-    expect(() => decisaoPara(forjado)).toThrow();
+    const r = recusaPara(forjado);
+    expect(r.status, "a guarda tem de sair com 1, e não morrer por outro motivo").toBe(1);
+    expect(r.saida).toMatch(/não foi assinado pelo App/);
+    expect(r.saida).toMatch(/Fulano de Tal/);
   });
 
   it("o mesmo apagar, ASSINADO pelo App, corta (controle positivo)", () => {
