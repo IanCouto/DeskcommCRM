@@ -2,46 +2,25 @@
  * Jornada: admin cola uma chave de IA e entende o resultado sem ler código.
  * Antes, o card mostrava `auth_failed_401` e a lista de modelos colada por vírgula.
  */
-import { execFileSync } from "node:child_process";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
-interface E2ECreds {
-  password: string;
-  users: Record<string, { email: string } | undefined>;
-}
+import { lerCreds, loginComoAdmin } from "./helpers/login-admin";
 
-const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
-
-function loadCreds(): E2ECreds {
-  if (!fs.existsSync(CREDS_PATH)) {
-    execFileSync("npx", ["tsx", "scripts/seed-e2e-credentials.ts"], { stdio: "inherit" });
-  }
-  return JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as E2ECreds;
-}
-
-const creds = loadCreds();
-
-async function login(page: Page, email: string): Promise<void> {
-  await page.goto("/login");
-  await page.locator("#email").fill(email);
-  await page.locator("#password").fill(creds.password);
-  await page.getByRole("button", { name: /entrar/i }).click();
-  await page.waitForURL(/\/app\//);
-}
+let creds = lerCreds();
 
 test.describe("Chaves de acesso à IA", () => {
   test("[P0] chave inválida vira frase legível, e a tela diz onde pegar outra", async ({ page }) => {
-    await login(page, creds.users.admin!.email);
+    creds = await loginComoAdmin(page, creds);
     await page.goto("/app/ai/credentials");
 
     const rotulo = `E2E ${Date.now()}`;
     await page.getByRole("button", { name: /adicionar credencial/i }).first().click();
 
+    const dialog = page.getByRole("dialog");
+
     // O diálogo ajuda antes de pedir: diz quando usar e onde pegar a chave.
     await expect(page.getByText(/padrão recomendado para conversar/)).toBeVisible();
-    await expect(page.getByRole("link", { name: /pegar chave em/i })).toHaveAttribute(
+    await expect(dialog.getByRole("link", { name: /pegar chave em/i })).toHaveAttribute(
       "href",
       /console\.anthropic\.com/,
     );
@@ -54,10 +33,17 @@ test.describe("Chaves de acesso à IA", () => {
     const card = page.locator("li", { hasText: rotulo });
     await expect(card).toBeVisible();
 
-    // Resultado da validação em até 15 s (401 com rede; network_error sem).
-    await expect(card.getByText(/recusou a chave|Não foi possível falar com o provedor/)).toBeVisible({
-      timeout: 15_000,
-    });
+    // Resultado da validação em até 15 s (401 com rede; network_error sem). O
+    // refetch client-side só acontece UMA vez, 3s depois de fechar o diálogo
+    // (setTimeout em AddCredentialDialog.tsx) — se a validação demorar mais
+    // que isso, a lista nunca reflete o resultado sozinha. Por isso o polling
+    // recarrega a página a cada tentativa, em vez de confiar só naquele refetch.
+    await expect(async () => {
+      await page.reload();
+      await expect(
+        page.locator("li", { hasText: rotulo }).getByText(/recusou a chave|Não foi possível falar com o provedor/),
+      ).toBeVisible();
+    }).toPass({ timeout: 15_000 });
 
     // Código cru nunca aparece como texto visível.
     await expect(card.getByText(/^auth_failed_401$|^network_error$/)).toHaveCount(0);

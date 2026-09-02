@@ -33,6 +33,7 @@ import {
   type Provider,
 } from "@/hooks/ai/useCredentials";
 import { IDS_DE_PROVEDOR, PROVEDORES } from "@/lib/ai/pontos/provedores";
+import { descreverErroDeValidacao } from "@/lib/ai/credenciais/erro-de-validacao";
 import { useT } from "@/hooks/i18n/useT";
 
 const formSchema = z.object({
@@ -108,7 +109,12 @@ export function AddCredentialDialog({ open, onOpenChange }: Props) {
             `${t("Validada")} — ${justCreated.models_available.length} ${t("modelos disponíveis.")}`,
           );
         } else if (justCreated?.validation_error) {
-          toast.error(`${t("Validação falhou")}: ${justCreated.validation_error}`);
+          const erro = descreverErroDeValidacao(justCreated.validation_error);
+          toast.error(
+            erro.generico
+              ? `${t("Falha na validação")} (${justCreated.validation_error}).`
+              : t(erro.frase),
+          );
         }
       }, 3000);
 
