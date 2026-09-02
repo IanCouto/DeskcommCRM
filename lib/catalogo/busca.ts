@@ -187,11 +187,68 @@ export interface Achado<T> {
  * Empate é preservado: quem chama precisa saber que houve mais de um, para
  * perguntar em vez de escolher.
  */
+/**
+ * O NÚMERO QUE NÃO É ATRIBUTO NÃO PODE ZERAR A BUSCA.
+ *
+ * O filtro numérico existe para impedir que quem pede 128GB veja o 256GB. Mas
+ * ele tratava TODO número da frase como atributo — e o cliente diz números que
+ * não são atributo de produto nenhum:
+ *
+ *     "quero 2 iphone 15"        -> 0 resultados (o "2" elimina tudo)
+ *     "tenho 3000 pra gastar"    -> 0 resultados
+ *     "me ve 5 peliculas"        -> 0 resultados
+ *
+ * Zero resultado num pedido de compra explícito é o pior desfecho da busca: o
+ * agente responde "não encontrei" para quem estava comprando.
+ *
+ * A regra que separa os dois casos se calibra sozinha no catálogo: um número só
+ * é vocabulário de atributo se ele APARECE em algum produto. "128" aparece,
+ * "2" não aparece em lugar nenhum — então "2" é quantidade, e quantidade não
+ * filtra.
+ *
+ * ⚠️ E o caso que a regra NÃO pode estragar: "iphone 15 512" quando não há
+ * iPhone de 512. O "512" existe no catálogo (nos MacBooks), então continua
+ * sendo atributo, continua filtrando, e a busca devolve VAZIO — que é a
+ * resposta certa: a loja não tem esse iPhone. Ignorar o 512 ali devolveria o
+ * de 128GB para quem pediu 512, que é o erro de preço que esta busca existe
+ * para não cometer.
+ */
+function numerosQueOCatalogoConhece<T extends ProdutoBuscavel>(
+  produtos: readonly T[],
+  numeros: readonly string[],
+): Set<string> {
+  const conhecidos = new Set<string>();
+  if (numeros.length === 0) return conhecidos;
+
+  for (const produto of produtos) {
+    const alvo = normalizar(
+      [produto.nome, produto.marca ?? "", produto.categoria ?? "", produto.codigo].join(" "),
+    );
+    for (const n of numeros) {
+      if (!conhecidos.has(n) && temONumero(alvo, n)) conhecidos.add(n);
+    }
+    if (conhecidos.size === numeros.length) break;
+  }
+  return conhecidos;
+}
+
 export function ordenarPorRelevancia<T extends ProdutoBuscavel>(
   produtos: readonly T[],
   consulta: string,
 ): Achado<T>[] {
-  const tokens = tokenizar(consulta);
+  const brutos = tokenizar(consulta);
+  if (brutos.palavras.length === 0 && brutos.numeros.length === 0) return [];
+
+  // Só os números que o catálogo reconhece como atributo continuam filtrando.
+  const conhecidos = numerosQueOCatalogoConhece(produtos, brutos.numeros);
+  const tokens: TokensDaBusca = {
+    palavras: brutos.palavras,
+    numeros: brutos.numeros.filter((n) => conhecidos.has(n)),
+  };
+
+  // Descartar TODOS os números pode esvaziar a consulta ("quero 2", "me ve 5"):
+  // aí não sobrou nada que identifique produto, e devolver o catálogo inteiro
+  // seria pior que devolver nada.
   if (tokens.palavras.length === 0 && tokens.numeros.length === 0) return [];
 
   const achados: Achado<T>[] = [];

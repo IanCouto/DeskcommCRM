@@ -104,6 +104,48 @@ describe("a palavra é difusa — o cliente erra a digitação", () => {
   });
 });
 
+describe("o número que NÃO é atributo não pode zerar a busca", () => {
+  /**
+   * O filtro numérico existe para o 128 não virar 256. Mas ele tratava TODO
+   * número da frase como atributo, e o cliente diz números que não são
+   * atributo de produto nenhum. Medido no catálogo real de uma loja:
+   *
+   *     "quero 2 iphone 15"  ->  0 resultados
+   *
+   * Zero resultado num pedido de compra explícito é o pior desfecho possível:
+   * o agente responde "não encontrei" para quem estava comprando.
+   *
+   * A regra se calibra sozinha no catálogo — um número só filtra se APARECE em
+   * algum produto.
+   */
+  it('"quero 2 iphone 15" acha o iPhone 15 — o "2" é quantidade, não capacidade', () => {
+    expect(nomes("quero 2 iphone 15")).toContain("iPhone 15 128GB Preto");
+  });
+
+  it('"tenho 3000 pra gastar num iphone" não zera por causa do orçamento', () => {
+    const r = nomes("tenho 3000 pra gastar num iphone");
+    expect(r.length).toBeGreaterThan(0);
+    expect(r.every((n) => n.startsWith("iPhone"))).toBe(true);
+  });
+
+  it("⚠️ o número que EXISTE no catálogo continua filtrando, mesmo sem casar nada", () => {
+    // O caso que a regra não pode estragar. "512" está no catálogo (no MacBook),
+    // então continua sendo vocabulário de atributo: quem pede um iPhone de 512
+    // recebe VAZIO, que é a resposta certa — a loja não tem. Ignorar o 512 aqui
+    // devolveria o de 128GB para quem pediu 512, que é o erro de preço que esta
+    // busca existe para não cometer.
+    const comMacBook = [...CATALOGO, { codigo: "MBP-512", nome: "MacBook Pro 512GB", marca: "Apple", categoria: "Notebook" }];
+    const r = ordenarPorRelevancia(comMacBook, "iphone 15 512");
+    expect(r).toEqual([]);
+  });
+
+  it("consulta que vira só quantidade não devolve o catálogo inteiro", () => {
+    // Descartar todos os números pode esvaziar a consulta. Devolver tudo seria
+    // pior que devolver nada: o agente listaria 50 produtos para quem disse "2".
+    expect(nomes("quero 2")).toEqual([]);
+  });
+});
+
 describe("o que a busca recusa — e recusar é a função", () => {
   it("produto que não existe devolve NADA, não o parecido", () => {
     // Devolver "o mais próximo" aqui seria o pior desfecho: o agente
