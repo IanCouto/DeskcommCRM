@@ -171,7 +171,6 @@ jobs:
         kanban-owner-filter.spec.ts queue-assign.spec.ts
         conversa-vira-lead.spec.ts contato-salva-email.spec.ts
         confirmar-dado-do-contato.spec.ts
-        credenciais-de-ia.spec.ts
         risk-radar.spec.ts invite-lifecycle.spec.ts system-update.spec.ts
         agente-papeis-operador.spec.ts prova-painel-provedores.spec.ts
         followup-linguagem.spec.ts followup-ramos.spec.ts
@@ -389,9 +388,22 @@ jobs:
       #      com consentimento pré-aprovado. Sem ela o job pararia num
       #      `accounts.google.com` esperando login humano — e é por isto que ela
       #      fica FORA do CI em vez de ficar sem existir.
+      #
+      # `credenciais-de-ia` entrou em 2026-09-02 escrita e registrada, mas NUNCA
+      # executada contra um browser real: o Docker Desktop da máquina onde ela foi
+      # escrita estava com o motor indisponível, e reiniciá-lo foi descartado por
+      # afetar outras sessões que compartilhavam a mesma máquina. A revisão final
+      # achou, só de LER o código, um defeito que só uma execução real revelaria
+      # (o login não passava pelo MFA obrigatório do admin — teria falhado de
+      # forma determinística) — prova de que "compila" não é "roda". O defeito
+      # achado foi corrigido, mas colocar num gate OBRIGATÓRIO uma spec que nunca
+      # rodou de verdade é apostar que não sobrou mais nenhum. Sai daqui assim que
+      # alguém rodar `pnpm exec playwright test tests/e2e/credenciais-de-ia.spec.ts`
+      # com o ambiente completo de pé e ela passar.
       FORA_DO_CI: >-
         vps-fresh-onboarding.spec.ts
         inbox-tempo-real.spec.ts
+        credenciais-de-ia.spec.ts
     steps:
       - uses: actions/checkout@v7
 

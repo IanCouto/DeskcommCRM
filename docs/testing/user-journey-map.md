@@ -112,7 +112,7 @@ fonte só (`lib/onboarding/passos.ts`) — eram três listas que discordavam. Ga
 
 ## Chaves de acesso à IA `[P0]`
 
-- `[P0]` Colar chave inválida e entender o motivo — `tests/e2e/credenciais-de-ia.spec.ts`. Achados corrigidos em 2026-09-02: lista de modelos colada por vírgula no card; "Validando…" eterno após restart; erro em código (`auth_failed_401`); diálogo sem dizer quando usar cada provedor nem onde pegar a chave; contagem "em uso" divergente do DELETE.
+- `[P0]` Colar chave inválida e entender o motivo — `tests/e2e/credenciais-de-ia.spec.ts`. Achados corrigidos em 2026-09-02: lista de modelos colada por vírgula no card; "Validando…" eterno após restart; erro em código (`auth_failed_401`, no card e no toast); diálogo sem dizer quando usar cada provedor nem onde pegar a chave; contagem "em uso" divergente do DELETE. **Spec escrita e registrada, mas ainda NÃO EXECUTADA contra browser real** — está em `FORA_DO_CI` (motivo no próprio workflow) porque o Docker da máquina onde foi escrita estava indisponível. A revisão de código achou, só de ler, um bug que só uma execução real revelaria (login sem passar pelo MFA obrigatório) — corrigido, mas a spec segue sem prova de execução até alguém rodá-la de verdade e movê-la de volta para `SPECS_PARTE_*`.
 
 ## J4 — CRM e Pipelines `[P1]`
 
