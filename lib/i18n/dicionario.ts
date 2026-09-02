@@ -1256,6 +1256,20 @@ export const DICIONARIO: Traducoes = {
   "A validação não terminou. Clique em revalidar para testar a chave agora.": {
     es: "La validación no terminó. Haz clic en revalidar para probar la clave ahora.",
   },
+  "O provedor recusou a chave. Confira se copiou inteira ou gere uma nova.": {
+    es: "El proveedor rechazó la clave. Verifica que la copiaste entera o genera una nueva.",
+  },
+  "O provedor limitou as chamadas desta chave. Tente de novo em alguns minutos.": {
+    es: "El proveedor limitó las llamadas de esta clave. Inténtalo de nuevo en unos minutos.",
+  },
+  "O provedor está fora do ar. A chave pode estar certa; revalide mais tarde.": {
+    es: "El proveedor está caído. La clave puede estar bien; revalida más tarde.",
+  },
+  "Não foi possível falar com o provedor a partir deste servidor. Revalide mais tarde.": {
+    es: "No fue posible hablar con el proveedor desde este servidor. Revalida más tarde.",
+  },
+  "Falha na validação": { es: "Falla en la validación" },
+  "Pegar chave em": { es: "Obtener clave en" },
   Inativa: { es: "Inactiva" },
   "Revalidando…": { es: "Revalidando…" },
   "Credencial removida.": { es: "Credencial eliminada." },

@@ -35,6 +35,8 @@ import {
   type CredentialStatus,
 } from "@/hooks/ai/useCredentials";
 import { useT } from "@/hooks/i18n/useT";
+import { PROVEDORES } from "@/lib/ai/pontos/provedores";
+import { descreverErroDeValidacao } from "@/lib/ai/credenciais/erro-de-validacao";
 
 interface Props {
   credential: CredentialRow;
@@ -68,6 +70,8 @@ export function CredentialCard({ credential, canWrite, usageCount }: Props) {
   const status = credentialStatus(credential);
   const last4 = credential.api_key_last4 ?? "????";
   const inUse = usageCount > 0;
+  const erro = descreverErroDeValidacao(credential.validation_error);
+  const provedor = PROVEDORES.find((p) => p.id === credential.provider);
 
   const onRevalidate = () => {
     startTransition(async () => {
@@ -127,8 +131,23 @@ export function CredentialCard({ credential, canWrite, usageCount }: Props) {
       </div>
 
       {credential.validation_error && (
-        <p className="line-clamp-2 text-xs text-destructive" title={credential.validation_error}>
-          {credential.validation_error}
+        <p className="text-xs text-destructive" title={credential.validation_error}>
+          {erro.generico
+            ? `${t("Falha na validação")} (${credential.validation_error}).`
+            : t(erro.frase)}
+          {erro.chaveErrada && provedor && (
+            <>
+              {" "}
+              <a
+                className="underline underline-offset-4"
+                href={provedor.ondePegarAChave}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t("Pegar chave em")} {provedor.rotulo}
+              </a>
+            </>
+          )}
         </p>
       )}
 

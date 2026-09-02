@@ -51,3 +51,20 @@ describe("CredentialCard — modelos", () => {
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 });
+
+describe("CredentialCard — erro de validação", () => {
+  it("401 vira frase e link para pegar chave nova", () => {
+    montar(credencial({ validated_at: null, validation_error: "auth_failed_401" }));
+    expect(screen.getByText(/recusou a chave/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Pegar chave em/ })).toHaveAttribute(
+      "href",
+      "https://console.anthropic.com/settings/keys",
+    );
+    expect(screen.queryByText("auth_failed_401")).toBeNull();
+  });
+
+  it("erro de rede não oferece link: a chave não é o problema", () => {
+    montar(credencial({ validated_at: null, validation_error: "network_error" }));
+    expect(screen.queryByRole("link", { name: /Pegar chave em/ })).toBeNull();
+  });
+});
