@@ -148,10 +148,23 @@ jobs:
           # falhou (f6f91377): a guarda antiga via depois=1 e recusava; a
           # nova vê 3 removidos e corta.
           #
-          # E a terceira condição é o que torna esta guarda MAIS FORTE que a
-          # anterior, não mais fraca: a ponta do branch de release é assinada
-          # pelo App da release. Apagar fragmento à mão num PR comum agora não
-          # basta — seria preciso a identidade do App, que vive em secrets.
+          # ⚠️ A TERCEIRA CONDIÇÃO É CINTO DE SEGURANÇA CONTRA ENGANO, NÃO
+          # CONTRA FORJA — e a distinção precisa estar escrita aqui, porque a
+          # versão anterior deste comentário dizia que a identidade do App
+          # "vive em secrets", e isso é FALSO.
+          #
+          # `%an` é o NOME DO AUTOR: campo de texto que qualquer um define.
+          # `git -c user.name='deskcomm-release[bot]' commit` devolve exatamente
+          # a string que a comparação abaixo procura. Medido.
+          #
+          # Nem adianta trocar por conferência criptográfica: os cinco cortes
+          # reais desta main têm `%G? = N` — não há assinatura para conferir.
+          #
+          # O que ela pega é o caso COMUM: alguém apaga um fragmento sem querer
+          # e a tag nasceria sozinha. Contra isso ela faz barulho em vez de
+          # silêncio, e é por isso que fica. Contra forja deliberada ela não
+          # protege, e a proteção de verdade — conferir pela API que o PR de
+          # origem foi aberto pelo App — está na issue #478.
           versao=$(pnpm exec tsx scripts/cortar-release.ts --versao-do-changelog)
 
           # `--diff-filter=D` conta o que este commit APAGOU de `.changes/`.
