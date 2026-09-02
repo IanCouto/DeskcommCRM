@@ -1,27 +1,58 @@
 /**
- * Vercel project config (canonical TS form).
+ * Config do projeto na Vercel (forma TS canônica).
  *
- * Crons placeholder; lista final virá da Spec 08 (Operações & Workers).
- * Os 7 crons abaixo refletem os jobs derivados das specs herdadas:
- *  - recover-stuck-messages (WAHA)
- *  - sync-sessions (WAHA)
- *  - process-pending-webhooks (event_log)
- *  - dispatch-webhooks (deliveries / outbound webhooks)
- *  - lgpd-data-request-worker (D+7 SLA)
- *  - nuvemshop-sync-incremental
- *  - audit-log-archive (cold storage)
+ * Crons: a mesma cadência do scheduler self-host (docker/scheduler/entrypoint.sh,
+ * TZ=UTC). Hobby só aceita 1x/dia e estoura o deploy com cron de minuto; isto
+ * assume Pro.
  *
- * Auth de cron: header `Authorization: Bearer ${INTERNAL_SECRET}` validado em cada handler.
+ * agent-dispatcher fica de fora de propósito: a rota é no-op permanente (Fase 0)
+ * e no Pro cada minuto cobra invocação. O self-host ainda a chama para não
+ * quebrar crontab antigo.
+ *
+ * Auth: a Vercel manda Authorization Bearer CRON_SECRET. Os handlers aceitam
+ * INTERNAL_CRON_SECRET ou INTERNAL_SECRET — o CRON_SECRET do dashboard tem
+ * que ser o mesmo valor de um dos dois, senão cada tick vira 403 em silêncio.
  */
 
 import type { VercelConfig } from "@vercel/config/v1";
 
 const config: VercelConfig = {
-  // Plano Hobby só aceita cron ≤1×/dia. Os jobs */1 (agent-dispatcher,
-  // routing-worker, event-log-drain) ficam de fora até Pro — no self-host
-  // eles rodam no container `scheduler`. Reative-os ao subir de plano.
+  // Pro: functions no Brasil. Hobby ficava preso em iad1.
+  regions: ["gru1"],
+  git: {
+    // Unspecified branches default to true. Catch-all off; so develop deploys.
+    deploymentEnabled: {
+      "*": false,
+      "**": false,
+      develop: true,
+    },
+  },
   crons: [
+    // minuto — fila, follow-up, roteamento, envio preso
+    { path: "/api/v1/cron/followup-flow-worker", schedule: "* * * * *" },
+    { path: "/api/v1/cron/event-log-drain", schedule: "* * * * *" },
+    { path: "/api/v1/cron/routing-worker", schedule: "* * * * *" },
+    { path: "/api/v1/cron/recover-stuck-messages", schedule: "* * * * *" },
+    // 5 min
+    { path: "/api/v1/cron/storage-redaction", schedule: "*/5 * * * *" },
+    { path: "/api/v1/cron/snooze-watcher", schedule: "*/5 * * * *" },
+    { path: "/api/v1/cron/attendant-heartbeat", schedule: "*/5 * * * *" },
+    { path: "/api/v1/cron/webhook-log-retention", schedule: "*/5 * * * *" },
+    { path: "/api/v1/cron/channel-health", schedule: "*/5 * * * *" },
+    { path: "/api/v1/cron/agenda-google-push", schedule: "*/5 * * * *" },
+    // 10 min — token Google vive ~1h; 10 min deixa folga na janela de 15
+    { path: "/api/v1/cron/contact-avatars", schedule: "*/10 * * * *" },
+    { path: "/api/v1/cron/agenda-google-refresh", schedule: "*/10 * * * *" },
+    // 15 min — sync da agenda é caro (um request por calendário)
+    { path: "/api/v1/cron/agenda-google-sync", schedule: "*/15 * * * *" },
+    { path: "/api/v1/cron/risk-watcher", schedule: "*/15 * * * *" },
+    { path: "/api/v1/cron/contact-phones", schedule: "*/30 * * * *" },
+    { path: "/api/v1/cron/contact-proposals-watcher", schedule: "17 * * * *" },
+    // diários UTC — iguais ao crontab da VPS
     { path: "/api/v1/cron/lgpd-sla-watcher", schedule: "0 12 * * *" },
+    { path: "/api/v1/cron/kb-conversations-batch", schedule: "30 3 * * *" },
+    { path: "/api/v1/cron/sync-model-catalog", schedule: "15 4 * * *" },
+    { path: "/api/v1/cron/data-retention", schedule: "40 4 * * *" },
   ],
   functions: {
     // EPIC-13 S-13.08: ToolLoopAgent runtime can issue multiple tool calls per

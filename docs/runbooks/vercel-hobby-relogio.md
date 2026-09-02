@@ -1,5 +1,10 @@
 # Relógio no Vercel Hobby (follow-up não fica preso)
 
+> **Plano Pro?** Ignore este runbook. Os crons nativos estão em `vercel.ts`, na
+> mesma cadência do scheduler da VPS. Desligue `RELOGIO_LIGADO` e o job do
+> cron-job.org — os dois relógios em paralelo não corrompem (o drain é
+> idempotente), só gastam invocação duas vezes.
+
 ## Por que existe
 
 No plano Hobby a Vercel só agenda **1 cron por dia**. Sem um relógio externo:

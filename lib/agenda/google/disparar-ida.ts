@@ -9,11 +9,11 @@
  *
  * ─── Por que isto existe, além do cron ───────────────────────────────────
  *
- * No self-host o `scheduler` chama `agenda-google-push` a cada 5 min. No Hobby
- * da Vercel esse cron NÃO RODA: o plano aceita 1×/dia, e o `vercel.ts` gasta
- * essa vaga no SLA de LGPD. Medido nos logs de uma instalação Hobby: dezenas
- * de hits em `/app/agenda`, zero em `/api/v1/cron/agenda-google-push`.
- * Compromisso nascia no CRM e nunca saía.
+ * No self-host o `scheduler` chama `agenda-google-push` a cada 5 min; no Pro da
+ * Vercel o `vercel.ts` faz o mesmo. Isto existe para a pessoa não esperar esse
+ * intervalo: a grade já pintou, a ida tenta agora. No Hobby o cron de 5 min
+ * não cabe (1×/dia), então sem o `after()` o compromisso nascia no CRM e
+ * nunca saía — medido: dezenas de hits em `/app/agenda`, zero no cron.
  */
 import { after } from "next/server";
 
