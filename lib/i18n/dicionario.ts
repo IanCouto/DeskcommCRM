@@ -1297,12 +1297,10 @@ export const DICIONARIO: Traducoes = {
   "A chave é cifrada (AES-GCM) antes de gravar e nunca é retornada em texto claro.": {
     es: "La clave se cifra (AES-GCM) antes de guardarse y nunca se devuelve en texto plano.",
   },
-  Label: { es: "Etiqueta" },
   "Ex: Produção": { es: "Ej: Producción" },
   "Credencial salva. Validando…": { es: "Credencial guardada. Validando…" },
   "Credencial salva. Validação em segundo plano.": { es: "Credencial guardada. Validación en segundo plano." },
   "modelos disponíveis.": { es: "modelos disponibles." },
-  "Validação falhou": { es: "La validación falló" },
   "Salvar e validar": { es: "Guardar y validar" },
   "Obrigatório": { es: "Obligatorio" },
   "API key muito curta": { es: "API key demasiado corta" },

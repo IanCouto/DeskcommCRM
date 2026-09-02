@@ -45,6 +45,11 @@ export function useCredentialsList(opts?: { initialData?: CredentialRow[] }) {
       }
     },
     initialData: opts?.initialData,
+    // Enquanto alguma credencial está "validando", a tela precisa ver o resultado
+    // (ou a janela vencer) sem F5: o status é derivado de `created_at` + relógio,
+    // e nada re-renderiza sozinho quando o relógio cruza a janela.
+    refetchInterval: (query) =>
+      query.state.data?.some((c) => credentialStatus(c) === "validating") ? 5_000 : false,
   });
 }
 
