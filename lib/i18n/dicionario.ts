@@ -2899,8 +2899,8 @@ export const DICIONARIO: Traducoes = {
     es: "Estos límites protegen el número contra el bloqueo de WhatsApp. Campo vacío usa el valor seguro predeterminado del sistema (que se muestra en el campo).",
   },
   "Este número é usado desde": { es: "Este número se usa desde" },
-  "A conexão pode ser nova sem que o número seja. O aquecimento conta a idade do NÚMERO — se você deixar em branco, ele é tratado como recém-criado e começa liberando pouco por dia.": {
-    es: "La conexión puede ser nueva sin que el número lo sea. El calentamiento cuenta la antigüedad del NÚMERO — si lo dejas en blanco, se trata como recién creado y empieza liberando poco por día.",
+  "A conexão pode ser nova sem que o número seja. O aquecimento conta a idade do NÚMERO — em branco, ele é tratado como recém-criado e começa liberando pouco por dia. Uma data já salva não some se você limpar o campo: para mudá-la, informe outra.": {
+    es: "La conexión puede ser nueva sin que el número lo sea. El calentamiento cuenta la antigüedad del NÚMERO — en blanco, se trata como recién creado y empieza liberando poco por día. Una fecha ya guardada no desaparece si limpias el campo: para cambiarla, informa otra.",
   },
   "Este número já está aquecido — pular o aquecimento": {
     es: "Este número ya está calentado — saltar el calentamiento",
