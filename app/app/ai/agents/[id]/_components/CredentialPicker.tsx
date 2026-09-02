@@ -27,7 +27,7 @@ interface Props {
   instalacaoTemChave?: boolean;
 }
 
-const STATUS_LABEL: Record<ReturnType<typeof credentialStatus>, string> = {
+export const STATUS_LABEL: Record<ReturnType<typeof credentialStatus>, string> = {
   validated: "validada",
   validating: "validando",
   unvalidated: "não validada",
