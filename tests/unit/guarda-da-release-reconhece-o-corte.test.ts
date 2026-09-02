@@ -81,9 +81,12 @@ function git(args: string[], opts: { autor?: string } = {}): string {
   return execFileSync("git", args, { cwd: repo, encoding: "utf8", env }).trim();
 }
 
-function fragmento(nome: string, corpo = "fragmento") {
+function fragmento(nome: string, impacto = "nada_mudou") {
   mkdirSync(join(repo, ".changes"), { recursive: true });
-  writeFileSync(join(repo, ".changes", nome), corpo);
+  writeFileSync(
+    join(repo, ".changes", nome),
+    `---\nimpacto: ${impacto}\nsecao: corrigido\ntitulo: ${nome}\n---\n\ncorpo.\n`,
+  );
 }
 
 function commit(mensagem: string, autor = "Alguém do time") {
@@ -128,7 +131,8 @@ beforeAll(() => {
   git(["config", "commit.gpgsign", "false"]);
 
   writeFileSync(join(repo, "CHANGELOG.md"), "# Changelog\n");
-  fragmento(".gitkeep", "");
+  mkdirSync(join(repo, ".changes"), { recursive: true });
+  writeFileSync(join(repo, ".changes/.gitkeep"), "");
   commit("chore: raiz");
 
   // ── Estado antes do corte: dois fragmentos declarados ────────────────────
@@ -187,6 +191,59 @@ describe("a guarda reconhece o corte pela forma dele", () => {
 
   it("NÃO corta um commit que nem toca em .changes/", () => {
     expect(decisaoPara(commitDeFeature)).toBe("nao");
+  });
+});
+
+describe("o que SOBRA da release também decide — e foi um cético que achou isto", () => {
+  /**
+   * A guarda antiga garantia, sem dizer, uma segunda propriedade: `depois==0`
+   * significava que a versão anunciada dá conta de TUDO que estava pendente na
+   * main. Trocar "esvaziou" por "removeu" abre mão disso — e há um caso em que
+   * abrir mão FAZ DANO.
+   *
+   * O caso: um PR com `impacto: exige_acao` mergeia durante a janela da
+   * release. A tag sai, `stable` passa a apontar para uma main que EXIGE ação
+   * do operador, e a seção do CHANGELOG que ele lê antes de rodar o `update.sh`
+   * diz que nada mudou. O aviso fica na gaveta e o contêiner não sobe.
+   *
+   * Eu tinha escrito no PR que a guarda nova era "mais forte, não mais fraca".
+   * Era falso nesta dimensão, e quem mostrou foi um cético que eu mesmo pus
+   * para tentar quebrá-la.
+   */
+  it("RECUSA ALTO quando sobra fragmento que exige ação do operador", () => {
+    git(["checkout", "-q", "main"]);
+    fragmento("e-obrigatorio.md", "exige_acao");
+    const concorrenteQueQuebra = commit("feat: agora o Redis é obrigatório");
+    git(["merge", "-q", "--no-ff", "-m", "Merge PR #999", concorrenteQueQuebra]);
+
+    fragmento("f.md");
+    const antes = commit("feat: mais um fragmento para a release consumir");
+    git(["checkout", "-q", "-b", "release/8.8.8", antes]);
+    rmSync(join(repo, ".changes/f.md"));
+    const ponta = commit("release(8.8.8): montada dos fragmentos", BOT);
+    git(["checkout", "-q", "main"]);
+    git(["merge", "-q", "--no-ff", "-m", "Merge pull request #1000 from release/8.8.8", ponta]);
+
+    expect(() => decisaoPara(git(["rev-parse", "HEAD"]))).toThrow();
+  });
+
+  it("CORTA quando o que sobra é inofensivo (controle positivo)", () => {
+    // Sem este caso, "recusa sempre que sobra alguma coisa" satisfaria o
+    // anterior — e seria a guarda antiga de volta, com outro nome.
+    git(["checkout", "-q", "main"]);
+    rmSync(join(repo, ".changes/e-obrigatorio.md"));
+    commit("chore: some com o fragmento que exige ação");
+
+    fragmento("g.md", "capacidade_nova");
+    fragmento("h.md");
+    const antes = commit("feat: dois fragmentos, nenhum exige ação");
+    git(["checkout", "-q", "-b", "release/7.7.7", antes]);
+    rmSync(join(repo, ".changes/g.md"));
+    const ponta = commit("release(7.7.7): montada dos fragmentos", BOT);
+    git(["checkout", "-q", "main"]);
+    git(["merge", "-q", "--no-ff", "-m", "Merge pull request #1001 from release/7.7.7", ponta]);
+
+    expect(decisaoPara(git(["rev-parse", "HEAD"]))).toBe("sim");
   });
 });
 
