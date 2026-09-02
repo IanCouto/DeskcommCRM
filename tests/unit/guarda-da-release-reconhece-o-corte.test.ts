@@ -123,14 +123,31 @@ function decisaoPara(sha: string): string {
   expect(script, "a linha `versao=$(...)` não foi substituída — o script rodaria o cortar-release de verdade")
     .not.toMatch(/cortar-release\.ts/);
 
+  // ⚠️ `GITHUB_OUTPUT` vai para um ARQUIVO, não para `/dev/stdout`.
+  //
+  // Isto foi o que reprovou este teste no CI enquanto ele passava aqui, e a
+  // causa não era nenhuma das duas que eu e o Maestro supusemos (fim de linha,
+  // interação entre testes). O stderr, quando finalmente chegou ao log, disse
+  // em uma linha:
+  //
+  //     bash: line 109: /dev/stdout: No such device or address
+  //
+  // No runner, o stdout do processo é um pipe capturado pelo `execFileSync`, e
+  // `>> /dev/stdout` falha. No macOS funciona. O passo do workflow escreve no
+  // arquivo que o GitHub dá — então o teste faz o mesmo, que é também o que o
+  // ambiente real faz.
+  const saidaDoGithub = join(repo, `.github-output-${process.pid}`);
+  writeFileSync(saidaDoGithub, "");
+
   try {
     const saida = execFileSync("bash", ["-c", script], {
       cwd: repo,
       encoding: "utf8",
-      env: { ...process.env, GITHUB_OUTPUT: "/dev/stdout" },
+      env: { ...process.env, GITHUB_OUTPUT: saidaDoGithub },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    return /cortar=(\w+)/.exec(saida)?.[1] ?? "(nenhuma decisão)";
+    const escrito = readFileSync(saidaDoGithub, "utf8");
+    return /cortar=(\w+)/.exec(`${escrito}\n${saida}`)?.[1] ?? "(nenhuma decisão)";
   } catch (err) {
     // `execFileSync` joga fora o stderr na mensagem padrão, e sem ele o CI
     // devolve só "Command failed: bash -c set -euo pipefail". Diagnóstico que
