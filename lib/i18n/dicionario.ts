@@ -1270,6 +1270,18 @@ export const DICIONARIO: Traducoes = {
   },
   "Falha na validação": { es: "Falla en la validación" },
   "Pegar chave em": { es: "Obtener clave en" },
+  "O padrão recomendado para conversar com o cliente: é o que melhor segue instruções longas e usa as ferramentas do CRM.": {
+    es: "El estándar recomendado para conversar con el cliente: es el que mejor sigue instrucciones largas y usa las herramientas del CRM.",
+  },
+  "Necessário para transcrever áudio e para indexar o seu material — esses dois pontos usam tecnologia da OpenAI mesmo quando o resto está em outro provedor.": {
+    es: "Necesario para transcribir audio e indexar tu material: esos dos puntos usan tecnología de OpenAI aunque el resto esté en otro proveedor.",
+  },
+  "Alternativa com contexto muito longo e custo baixo para tarefas de classificação.": {
+    es: "Alternativa con contexto muy largo y bajo costo para tareas de clasificación.",
+  },
+  "Uma chave só dá acesso a centenas de modelos de dezenas de fabricantes, inclusive os gratuitos. É o caminho mais simples para experimentar sem abrir conta em cada provedor.": {
+    es: "Una sola clave da acceso a cientos de modelos de decenas de fabricantes, incluidos los gratuitos. Es el camino más simple para experimentar sin abrir cuenta en cada proveedor.",
+  },
   Inativa: { es: "Inactiva" },
   "Revalidando…": { es: "Revalidando…" },
   "Credencial removida.": { es: "Credencial eliminada." },
