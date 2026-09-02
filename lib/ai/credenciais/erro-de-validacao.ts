@@ -49,7 +49,16 @@ export function descreverErroDeValidacao(codigo: string | null): ErroDescrito {
     };
   }
 
-  if (codigo === "AbortError" || codigo === "TimeoutError" || codigo === "network_error") {
+  if (
+    codigo === "AbortError" ||
+    codigo === "TimeoutError" ||
+    codigo === "network_error" ||
+    // `fetch` do Node lança `TypeError` para falha de rede/DNS (undici não usa
+    // um nome próprio aqui) — sem isto, um self-host com firewall de saída
+    // restrito via um "Falha na validação (TypeError)." cru, achado rodando a
+    // spec de verdade contra o provedor real (não reproduz com mock).
+    codigo === "TypeError"
+  ) {
     return { frase: REDE, chaveErrada: false, generico: false };
   }
 

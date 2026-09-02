@@ -25,6 +25,10 @@ describe("descreverErroDeValidacao", () => {
     expect(descreverErroDeValidacao("AbortError").frase).toBe(esperado);
     expect(descreverErroDeValidacao("TimeoutError").frase).toBe(esperado);
     expect(descreverErroDeValidacao("network_error").frase).toBe(esperado);
+    // `fetch` do Node lança TypeError p/ falha de rede/DNS (undici não nomeia
+    // isso `network_error`). Achado rodando a spec de e2e contra o provedor
+    // real: sem este caso, o card mostrava "Falha na validação (TypeError)."
+    expect(descreverErroDeValidacao("TypeError").frase).toBe(esperado);
   });
 
   it("código desconhecido não some: vira frase genérica COM o código", () => {
