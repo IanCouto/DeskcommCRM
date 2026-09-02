@@ -48,9 +48,15 @@ export function useCredentialsList(opts?: { initialData?: CredentialRow[] }) {
   });
 }
 
-export function credentialStatus(row: CredentialRow): "validated" | "validating" | "invalid" | "inactive" {
+/** Depois disto sem resultado, o processo que validaria já morreu. */
+export const JANELA_DE_VALIDACAO_MS = 2 * 60_000;
+
+export type CredentialStatus = "validated" | "validating" | "unvalidated" | "invalid" | "inactive";
+
+export function credentialStatus(row: CredentialRow, agora: number = Date.now()): CredentialStatus {
   if (!row.is_active) return "inactive";
   if (row.validation_error) return "invalid";
   if (row.validated_at) return "validated";
+  if (agora - Date.parse(row.created_at) > JANELA_DE_VALIDACAO_MS) return "unvalidated";
   return "validating";
 }

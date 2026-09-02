@@ -32,6 +32,7 @@ import {
   credentialStatus,
   credentialsListQueryKey,
   type CredentialRow,
+  type CredentialStatus,
 } from "@/hooks/ai/useCredentials";
 import { useT } from "@/hooks/i18n/useT";
 
@@ -41,16 +42,18 @@ interface Props {
   usageCount: number;
 }
 
-const STATUS_LABEL: Record<ReturnType<typeof credentialStatus>, string> = {
+const STATUS_LABEL: Record<CredentialStatus, string> = {
   validated: "Validada",
   validating: "Validando…",
+  unvalidated: "Não validada",
   invalid: "Inválida",
   inactive: "Inativa",
 };
 
-const STATUS_VARIANT: Record<ReturnType<typeof credentialStatus>, "default" | "secondary" | "destructive" | "outline"> = {
+const STATUS_VARIANT: Record<CredentialStatus, "default" | "secondary" | "destructive" | "outline"> = {
   validated: "default",
   validating: "secondary",
+  unvalidated: "outline",
   invalid: "destructive",
   inactive: "outline",
 };
@@ -126,6 +129,12 @@ export function CredentialCard({ credential, canWrite, usageCount }: Props) {
       {credential.validation_error && (
         <p className="line-clamp-2 text-xs text-destructive" title={credential.validation_error}>
           {credential.validation_error}
+        </p>
+      )}
+
+      {status === "unvalidated" && (
+        <p className="text-xs text-muted-foreground">
+          {t("A validação não terminou. Clique em revalidar para testar a chave agora.")}
         </p>
       )}
 

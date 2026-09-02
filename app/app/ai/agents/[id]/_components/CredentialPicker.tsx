@@ -30,6 +30,7 @@ interface Props {
 const STATUS_LABEL: Record<ReturnType<typeof credentialStatus>, string> = {
   validated: "validada",
   validating: "validando",
+  unvalidated: "não validada",
   invalid: "inválida",
   inactive: "inativa",
 };

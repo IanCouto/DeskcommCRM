@@ -1250,7 +1250,11 @@ export const DICIONARIO: Traducoes = {
     },
   "Adicionar credencial": { es: "Añadir credencial" },
   Validada: { es: "Validada" },
+  "Não validada": { es: "Sin validar" },
   Inválida: { es: "Inválida" },
+  "A validação não terminou. Clique em revalidar para testar a chave agora.": {
+    es: "La validación no terminó. Haz clic en revalidar para probar la clave ahora.",
+  },
   Inativa: { es: "Inactiva" },
   "Revalidando…": { es: "Revalidando…" },
   "Credencial removida.": { es: "Credencial eliminada." },
