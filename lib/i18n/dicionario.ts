@@ -514,6 +514,7 @@ export const DICIONARIO: Traducoes = {
   "A chave desta instalação": { es: "La clave de esta instalación" },
   validada: { es: "validada" },
   validando: { es: "validando" },
+  "não validada": { es: "no validada" },
   inativa: { es: "inactiva" },
   "Nenhuma credencial": { es: "Ninguna credencial" },
   cadastrada: { es: "registrada" },
