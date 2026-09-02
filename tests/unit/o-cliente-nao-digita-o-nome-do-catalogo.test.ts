@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ordenarPorRelevancia, pontuar, tokenizar } from "@/lib/catalogo/busca";
+import { buscarComRelaxamento, ordenarPorRelevancia, pontuar, tokenizar } from "@/lib/catalogo/busca";
 
 /**
  * O CLIENTE NÃO DIGITA O NOME DO CATÁLOGO.
@@ -128,15 +128,39 @@ describe("o número que NÃO é atributo não pode zerar a busca", () => {
     expect(r.every((n) => n.startsWith("iPhone"))).toBe(true);
   });
 
-  it("⚠️ o número que EXISTE no catálogo continua filtrando, mesmo sem casar nada", () => {
-    // O caso que a regra não pode estragar. "512" está no catálogo (no MacBook),
-    // então continua sendo vocabulário de atributo: quem pede um iPhone de 512
-    // recebe VAZIO, que é a resposta certa — a loja não tem. Ignorar o 512 aqui
-    // devolveria o de 128GB para quem pediu 512, que é o erro de preço que esta
-    // busca existe para não cometer.
+  it("⚠️ o número que EXISTE no catálogo continua eliminando, e devolve VAZIO", () => {
+    // "512" está no catálogo (no MacBook), então é vocabulário de atributo:
+    // quem pede um iPhone de 512 recebe vazio, que é a resposta certa.
     const comMacBook = [...CATALOGO, { codigo: "MBP-512", nome: "MacBook Pro 512GB", marca: "Apple", categoria: "Notebook" }];
-    const r = ordenarPorRelevancia(comMacBook, "iphone 15 512");
-    expect(r).toEqual([]);
+    expect(ordenarPorRelevancia(comMacBook, "iphone 15 512")).toEqual([]);
+  });
+
+  it("⚠️ NA LOJA QUE NÃO TEM 512 EM LUGAR NENHUM, o achado vem MARCADO como relaxado", () => {
+    // O contraexemplo que derruba a regra ingênua de "descartar o número que o
+    // catálogo não conhece": numa loja pequena e homogênea — só 128 e 256 — o
+    // 512 deixaria de ser vocabulário, sumiria do filtro, e quem pediu 512
+    // receberia o preço do 128 EM SILÊNCIO. É o erro que esta busca existe para
+    // não cometer, e loja pequena é o cliente deste produto.
+    //
+    // A busca acha, mas DIZ que ignorou o 512. Quem chama tem de confirmar com
+    // o cliente em vez de responder como se fosse o pedido.
+    const r = buscarComRelaxamento(CATALOGO, "iphone 15 pro 512");
+    expect(r.ignorados).toEqual(["512"]);
+    expect(r.achados.length).toBeGreaterThan(0);
+  });
+
+  it("a busca que acha SEM relaxar não marca nada (controle positivo)", () => {
+    // Sem este caso, "marca sempre" satisfaria o anterior — e aí o agente
+    // pediria confirmação de tudo, que é ruído até virar ignorado.
+    const r = buscarComRelaxamento(CATALOGO, "iphone 15 128");
+    expect(r.ignorados).toEqual([]);
+    expect(r.achados.map((a) => a.produto.nome)).toEqual(["iPhone 15 128GB Preto"]);
+  });
+
+  it('"quero 2 iphone 15" vem marcado: o "2" foi ignorado', () => {
+    const r = buscarComRelaxamento(CATALOGO, "quero 2 iphone 15");
+    expect(r.ignorados).toEqual(["2"]);
+    expect(r.achados.length).toBeGreaterThan(0);
   });
 
   it("consulta que vira só quantidade não devolve o catálogo inteiro", () => {

@@ -12,7 +12,7 @@
 import { z } from "zod";
 
 import type { McpToolDefinition } from "../types";
-import { ordenarPorRelevancia } from "@/lib/catalogo/busca";
+import { buscarComRelaxamento } from "@/lib/catalogo/busca";
 
 // ---------------------------------------------------------------------------
 // pedidos de um cliente
@@ -124,7 +124,7 @@ export const crmSearchProducts: McpToolDefinition<typeof produtosInputShape> = {
       quantidade: number;
     };
 
-    const achados = ordenarPorRelevancia((data ?? []) as Linha[], input.termo);
+    const { achados, ignorados } = buscarComRelaxamento((data ?? []) as Linha[], input.termo);
 
     // `controla_estoque` é o conserto de uma armadilha da versão anterior, que
     // filtrava por quantidade sempre: numa loja que não conta estoque (decant de
@@ -160,13 +160,27 @@ export const crmSearchProducts: McpToolDefinition<typeof produtosInputShape> = {
         disponivel: !produto.controla_estoque || produto.quantidade > 0,
       })),
       empate,
+      // Relaxamento é o irmão do empate: nos dois a busca sabe que a resposta
+      // NÃO é exatamente o que foi pedido, e nos dois quem decide é a pessoa.
+      // A diferença é o que falta — no empate, qual das opções; aqui, se o
+      // número que sumiu importava.
+      ...(ignorados.length > 0 ? { numeros_ignorados: ignorados } : {}),
       ...(empate
         ? {
             mensagem:
               "mais de um produto casa igualmente o que a pessoa disse, e o preço deles é diferente. " +
               "Pergunte qual é antes de responder valor.",
           }
-        : {}),
+        : ignorados.length > 0
+          ? {
+              mensagem:
+                `não há produto com ${ignorados.join(" nem ")} no catálogo desta loja. ` +
+                "O que está aqui foi encontrado IGNORANDO esse número. Se ele era a capacidade, o " +
+                "tamanho ou o modelo que a pessoa pediu, diga que a loja não tem essa opção — " +
+                "NÃO responda o preço destes como se fossem o que ela pediu. Se era quantidade ou " +
+                "orçamento, siga normalmente.",
+            }
+          : {}),
     };
   },
 };
