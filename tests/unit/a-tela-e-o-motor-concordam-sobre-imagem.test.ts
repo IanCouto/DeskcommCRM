@@ -86,7 +86,7 @@ describe("ponto FIXO anuncia o que ele mesmo usa", () => {
       pontoId: "transcricao_de_audio",
       binding: null,
       agentePublicado: null,
-      modeloDeAmbiente: null,
+      modeloDeAmbiente: undefined,
       padraoDaOrganizacao: { provider: "anthropic", defaultModel: "claude-sonnet-5" },
     });
 
@@ -100,9 +100,16 @@ describe("ponto FIXO anuncia o que ele mesmo usa", () => {
     // não pode ressuscitar o comportamento errado.
     const d = decidirBinding({
       pontoId: "transcricao_de_audio",
-      binding: { provider: "openai", model_id: "gpt-5.6-sol", credential_id: null, base_url: null, is_enabled: true },
+      binding: {
+        purpose: "transcricao_de_audio",
+        provider: "openai",
+        model_id: "gpt-5.6-sol",
+        credential_id: null,
+        base_url: null,
+        is_enabled: true,
+      },
       agentePublicado: null,
-      modeloDeAmbiente: null,
+      modeloDeAmbiente: undefined,
       padraoDaOrganizacao: { provider: "anthropic", defaultModel: "claude-sonnet-5" },
     });
     expect(d.modelId).toBe("whisper-1");
@@ -119,7 +126,7 @@ describe("ponto FIXO anuncia o que ele mesmo usa", () => {
       pontoId: "visao_de_imagem",
       binding: null,
       agentePublicado: null,
-      modeloDeAmbiente: null,
+      modeloDeAmbiente: undefined,
       padraoDaOrganizacao: { provider: "openai", defaultModel: "gpt-5.6-sol" },
     });
     expect(d.origem).not.toBe("fixo_do_produto");
