@@ -2898,6 +2898,9 @@ export const DICIONARIO: Traducoes = {
   "Estes limites protegem o número contra bloqueio do WhatsApp. Campo vazio usa o padrão seguro do sistema (mostrado no campo).": {
     es: "Estos límites protegen el número contra el bloqueo de WhatsApp. Campo vacío usa el valor seguro predeterminado del sistema (que se muestra en el campo).",
   },
+  "A ordem de preferência vai de 0 a 1000.": {
+    es: "El orden de preferencia va de 0 a 1000.",
+  },
   "Este número é usado desde": { es: "Este número se usa desde" },
   "A conexão pode ser nova sem que o número seja. O aquecimento conta a idade do NÚMERO — se você deixar em branco, ele é tratado como recém-criado e começa liberando pouco por dia.": {
     es: "La conexión puede ser nueva sin que el número lo sea. El calentamiento cuenta la antigüedad del NÚMERO — si lo dejas en blanco, se trata como recién creado y empieza liberando poco por día.",
