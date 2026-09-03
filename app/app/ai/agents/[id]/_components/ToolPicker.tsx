@@ -123,7 +123,7 @@ function FichaCapacidade({
         </span>
         <span className="block text-xs text-muted-foreground">{capacidade.explicacao}</span>
         {mostrarNomeTecnico ? (
-          <code className="block font-mono text-[11px] text-muted-foreground/70">
+          <code className="block font-mono text-[11px] text-muted-foreground">
             {capacidade.name}
           </code>
         ) : null}

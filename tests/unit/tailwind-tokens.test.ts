@@ -343,3 +343,200 @@ function temClassName(dir: string): boolean {
   }
   return false;
 }
+
+/**
+ * O `/60` que nunca pintou — e que a migração fez pintar.
+ *
+ * No v3 este projeto mapeava os tokens de cor para `var(--color-…)`, um valor
+ * de cor COMPLETO. O modificador de alpha do v3 só sabia injetar opacidade em
+ * canais (`rgb(var(--x) / <alpha-value>)`); diante de um `var()` inteiro ele
+ * não tinha onde encaixar o número e **descartava o `/NN` em silêncio**. Ou
+ * seja: `text-muted-foreground/60` renderizava cor cheia, e a transparência que
+ * o autor escreveu nunca existiu na tela.
+ *
+ * O v4 resolve alpha por `color-mix()`, que funciona com qualquer valor. Medido
+ * neste mesmo globals.css:
+ *   .text-muted-foreground\/60 → color-mix(in oklab,
+ *                                  var(--color-text-muted) 60%, transparent)
+ * A transparência passa a valer de verdade — e aí o que era decoração morta
+ * vira contraste real. No tema claro o rótulo de grupo do menu caía de 6.98:1
+ * para 2.77:1, abaixo do mínimo AA de 4.5:1, e reprovava o `expectNoBlockingA11y`
+ * de `tests/e2e/rbac-roles.spec.ts` com violação `color-contrast` (serious).
+ *
+ * Esta guarda não tem lista de nomes proibidos: ela LÊ a paleta do globals.css,
+ * resolve o token nos DOIS temas e calcula o contraste. Um alpha que passe
+ * folgado continua permitido; um que derrube o texto abaixo de 4.5:1 reprova
+ * sozinho, sem ninguém precisar lembrar de atualizar lista nenhuma. É a
+ * diferença entre prender a instância e prender a classe — e ela se paga: a
+ * varredura à mão que precedeu esta guarda cobriu quatro famílias de token e
+ * passou reto por `text-warning/80`, que a versão calculada achou de graça.
+ *
+ * Duas decisões de MEDIDA, ambas para não gerar falso vermelho (guarda que
+ * mente é guarda que a próxima pessoa desliga):
+ *
+ *  1. `<x>-foreground` é medido contra `--color-<x>`, não contra o fundo da
+ *     página. `text-primary-foreground` é o texto DENTRO do balão `bg-primary`;
+ *     medi-lo sobre `--color-surface` dá 1.00:1 — número sem sentido, porque
+ *     essa combinação não existe na tela.
+ *  2. Linha com `aria-hidden` é pulada. São ícones decorativos, que o próprio
+ *     axe não submete à regra `color-contrast` por não serem texto.
+ */
+describe("Tailwind 4 — alpha em cor de texto agora PINTA, então precisa passar no contraste", () => {
+  const MINIMO_AA = 4.5;
+  /** Fundos de página, por nome de token (sem o prefixo `--color-`). */
+  const FUNDOS_DE_PAGINA = ["surface", "bg", "surface-elevated"];
+
+  /** `#rgb`/`#rrggbb` → canais. Devolve null para o que não sabemos medir. */
+  function canais(v: string): [number, number, number] | null {
+    const s = v.trim();
+    const m6 = /^#([0-9a-f]{6})$/i.exec(s);
+    if (m6?.[1]) {
+      const h = m6[1];
+      return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+    }
+    const m3 = /^#([0-9a-f]{3})$/i.exec(s);
+    if (m3?.[1]) {
+      const h = m3[1];
+      return [0, 1, 2].map((i) => parseInt(h[i]! + h[i]!, 16)) as [number, number, number];
+    }
+    return null;
+  }
+
+  /** Declarações `--x: valor` de um bloco, como mapa. */
+  function mapaDe(texto: string): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const d of texto.matchAll(/^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/gim)) {
+      if (d[1] && d[2] && !m.has(d[1])) m.set(d[1], d[2].trim());
+    }
+    return m;
+  }
+
+  const TEMA = {
+    claro: mapaDe(bloco(":root")),
+    escuro: mapaDe(bloco('[data-theme="dark"]')),
+  };
+  const PONTE = mapaDe(bloco("@theme inline"));
+
+  /**
+   * Resolve o token até um hex, seguindo `var(--color-y)` pela ponte do
+   * `@theme` e pela paleta do tema. Devolve null quando não chega a um hex — e
+   * quem chama TRATA o null como "não sei medir", nunca como "passou".
+   */
+  function corDoToken(nome: string, tema: "claro" | "escuro"): [number, number, number] | null {
+    let atual = `--color-${nome}`;
+    for (let i = 0; i < 8; i++) {
+      const bruto = TEMA[tema].get(atual) ?? PONTE.get(atual);
+      if (!bruto) return null;
+      const direto = canais(bruto);
+      if (direto) return direto;
+      const via = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(bruto);
+      if (!via?.[1]) return null;
+      if (via[1] === atual) {
+        // `--x: var(--x)` é a ponte do `@theme inline` apontando para a
+        // primitiva de mesmo nome; a paleta do tema é quem tem o valor.
+        const prim = TEMA[tema].get(atual);
+        return prim ? canais(prim) : null;
+      }
+      atual = via[1];
+    }
+    return null;
+  }
+
+  function luminancia([r, g, b]: [number, number, number]): number {
+    const c = [r, g, b].map((v) => {
+      const x = v / 255;
+      return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+
+  function contraste(fg: [number, number, number], bg: [number, number, number]): number {
+    const [a, b] = [luminancia(fg), luminancia(bg)].sort((x, y) => y - x) as [number, number];
+    return (a + 0.05) / (b + 0.05);
+  }
+
+  function sobre(
+    fg: [number, number, number],
+    bg: [number, number, number],
+    alpha: number,
+  ): [number, number, number] {
+    return fg.map((f, i) => Math.round(f * alpha + bg[i]! * (1 - alpha))) as [
+      number,
+      number,
+      number,
+    ];
+  }
+
+  /** Os fundos contra os quais ESTE token é medido — ver decisão (1) acima. */
+  function fundosDe(token: string): string[] {
+    const par = /^(.+)-foreground$/.exec(token)?.[1];
+    if (!par) return FUNDOS_DE_PAGINA;
+    // `muted-foreground` e irmãos neutros resolvem para um fundo de página; aí
+    // medir contra os três é mais fiel do que contra o par nominal, porque é
+    // assim que eles aparecem na tela (texto secundário sobre card, bg, etc.).
+    const corDoPar = corDoToken(par, "claro");
+    const ehFundoDePagina = FUNDOS_DE_PAGINA.some((f) => {
+      const c = corDoToken(f, "claro");
+      return c && corDoPar && c.join() === corDoPar.join();
+    });
+    return ehFundoDePagina || !corDoPar ? FUNDOS_DE_PAGINA : [par];
+  }
+
+  it("nenhum `text-<token>/<alpha>` cai abaixo de 4.5:1 em nenhum dos dois temas", () => {
+    const ARQUIVOS = listarFontes(["app", "components", "lib", "hooks"]);
+    const rx = /(?<=[\s"'`:])text-([a-z][a-z0-9-]*)\/(\d{1,3})(?=[\s"'`!]|$)/g;
+
+    const reprovados: string[] = [];
+    const naoMedidos: string[] = [];
+    let medidos = 0;
+
+    for (const f of ARQUIVOS) {
+      const linhas = fs.readFileSync(f, "utf8").split("\n");
+      linhas.forEach((linha, i) => {
+        const cru = linha.trimStart();
+        if (cru.startsWith("*") || cru.startsWith("//") || cru.startsWith("/*")) return;
+        if (linha.includes("aria-hidden")) return; // ver decisão (2) acima
+        for (const m of linha.matchAll(rx)) {
+          const token = m[1]!;
+          const alpha = Number(m[2]) / 100;
+          const onde = `${path.relative(RAIZ, f)}:${i + 1}  text-${token}/${m[2]}`;
+          for (const tema of ["claro", "escuro"] as const) {
+            const cor = corDoToken(token, tema);
+            if (!cor) {
+              // Sonda cega que devolve verde é indistinguível de guarda morta:
+              // registra em vez de silenciar.
+              naoMedidos.push(`${onde} [${tema}]`);
+              continue;
+            }
+            for (const nomeFundo of fundosDe(token)) {
+              const bg = corDoToken(nomeFundo, tema);
+              if (!bg) {
+                naoMedidos.push(`${onde} [${tema}] fundo ${nomeFundo}`);
+                continue;
+              }
+              medidos++;
+              const r = contraste(sobre(cor, bg, alpha), bg);
+              if (r < MINIMO_AA) {
+                reprovados.push(
+                  `${onde} → ${r.toFixed(2)}:1 sobre --color-${nomeFundo} (${tema}); ` +
+                    `sem o /${m[2]} seria ${contraste(cor, bg).toFixed(2)}:1`,
+                );
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // Controle positivo: a árvore comprovadamente TEM alphas de cor de texto.
+    // Se a contagem de medições zerar, a guarda cegou (regex, paleta renomeada,
+    // `bloco()` mudando de forma) e o verde seria falso.
+    expect(medidos, `guarda cega: nenhum alpha medido. Não-medidos: ${naoMedidos.join(", ")}`)
+      .toBeGreaterThan(0);
+
+    expect(
+      [...new Set(reprovados)].sort(),
+      "o alpha PINTA no v4: ou tire o `/NN` (restaura o que a produção já mostra) ou use um alpha que passe",
+    ).toEqual([]);
+  });
+});

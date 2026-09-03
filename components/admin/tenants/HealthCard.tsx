@@ -136,7 +136,7 @@ export function HealthCard({
 
       {/* Last updated */}
       {lastUpdated && (
-        <p className="text-[11px] text-muted-foreground/60 mt-auto">
+        <p className="text-[11px] text-muted-foreground mt-auto">
           {lastUpdated}
         </p>
       )}

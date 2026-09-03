@@ -149,7 +149,7 @@ function Resultados({ aoEscolher }: { aoEscolher: () => void }) {
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-2">
                     <span className="text-sm font-medium">{t(d.label)}</span>
-                    <span className="truncate text-[11px] uppercase tracking-wider text-muted-foreground/70">
+                    <span className="truncate text-[11px] uppercase tracking-wider text-muted-foreground">
                       {t(ROTULO_GRUPO.get(d.group) ?? "")}
                     </span>
                   </div>

@@ -286,7 +286,7 @@ export function TiposDeAgendamentoClient({
                     type="button"
                     data-testid={`sem-dono-${tipo.id}`}
                     onClick={() => setEditandoId(tipo.id)}
-                    className="text-xs text-warning underline underline-offset-2 hover:text-warning/80"
+                    className="text-xs text-warning underline underline-offset-2"
                   >
                     {t("sem responsável — definir quem atende")}
                   </button>

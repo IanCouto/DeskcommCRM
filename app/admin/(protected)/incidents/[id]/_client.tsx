@@ -173,7 +173,7 @@ export function IncidentDetailClient({ id }: IncidentDetailClientProps) {
                       <span className="font-mono text-muted-foreground">
                         {entry.action}
                       </span>
-                      <span className="ml-2 text-muted-foreground/70">
+                      <span className="ml-2 text-muted-foreground">
                         {format(new Date(entry.created_at), "dd/MM HH:mm:ss", {
                           locale: localeDaData,
                         })}

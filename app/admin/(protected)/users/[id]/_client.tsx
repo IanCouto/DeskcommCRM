@@ -259,14 +259,14 @@ export function UserDetailClient({ id }: UserDetailClientProps) {
                       <span className="font-mono text-muted-foreground">
                         {entry.action}
                       </span>
-                      <span className="text-muted-foreground/60">
+                      <span className="text-muted-foreground">
                         {format(new Date(entry.created_at), "dd/MM HH:mm:ss", {
                           locale: localeDaData,
                         })}
                       </span>
                     </div>
                     {entry.resource_type && (
-                      <p className="text-muted-foreground/60">
+                      <p className="text-muted-foreground">
                         {entry.resource_type}
                         {entry.resource_id ? ` · ${entry.resource_id.slice(0, 8)}…` : ""}
                       </p>
