@@ -5,11 +5,11 @@ titulo: A inteligência artificial não se cala mais por três horas depois de r
 ---
 
 Sempre que o CRM enviava uma mensagem pelo WhatsApp, o próprio WhatsApp
-devolvia um eco dela de volta. O sistema lia esse eco como **"um atendente
-humano acabou de responder pelo celular"** e desligava a IA por três horas.
+devolvia um eco dela de volta. O sistema lia esse eco como se um atendente
+humano tivesse respondido pelo celular, e **desligava a IA por três horas.**
 
 Ou seja: a IA se calava por ter falado. O cliente ficava sem resposta e a tela
-mostrava **"Automático pausado"** — um estado legítimo, que ninguém investiga,
+mostrava **"Automático pausado"** — estado legítimo, que ninguém investiga,
 porque é exatamente o que aparece quando alguém assume a conversa de propósito.
 
 Atingia qualquer instalação e qualquer conversa, sem depender de configuração.
