@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { LeadContextMessage } from "@/lib/agent-engine/edge/crm/get-lead-context";
 import { modelCapabilities } from "@/lib/agent-engine/edge/llm/capabilities";
+import { visaoDeclaradaNoCatalogo, visaoEmVigor } from "@/lib/ai/pontos/capacidade-em-vigor";
 
 
 /**
@@ -32,7 +33,26 @@ export interface BuildNativeMediaPartsArgs {
 
 export async function buildNativeMediaParts(args: BuildNativeMediaPartsArgs): Promise<NativeMediaPart[]> {
   if (!args.multimodalInput) return [];
-  const caps = modelCapabilities(args.provider, args.model);
+  // ⚠️ A imagem NÃO pergunta ao registro direto. Num roteador (openrouter) o
+  // registro responde pelo prefixo do fabricante — `openai/gpt-3.5-turbo` casa
+  // `openai/` e o registro afirma que enxerga, quando não enxerga. Anexar a
+  // parte nativa ali manda bytes que o provedor recusa, e o custo é o turno,
+  // não um aviso. `visaoEmVigor` deixa o catálogo (sincronizado das
+  // modalidades que a própria OpenRouter declara) decidir nesse caso, e só
+  // nesse — no provedor direto ele nem toca o banco.
+  //
+  // O PDF continua no registro: o catálogo não tem coluna de PDF, então não há
+  // medida para preferir ao palpite.
+  const caps = {
+    image: (
+      await visaoEmVigor({
+        provider: args.provider,
+        modelId: args.model,
+        catalogo: visaoDeclaradaNoCatalogo(args.admin, args.provider, args.model),
+      })
+    ).enxerga,
+    pdf: modelCapabilities(args.provider, args.model).pdf,
+  };
   if (!caps.image && !caps.pdf) return [];
 
   const maxItems = args.maxItems ?? 1;
