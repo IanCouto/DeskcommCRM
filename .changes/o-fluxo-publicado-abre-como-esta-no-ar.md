@@ -18,9 +18,9 @@ coisa e salvasse estaria salvando por cima — com o desenho vazio que a tela
 mostrou. Um "publicar" depois disso trocaria o fluxo que está funcionando por
 esse vazio, sem aviso nenhum.
 
-Agora, quando não existe cópia de trabalho, a tela abre **exatamente o que está
-no ar**. Quem nunca editou vê o fluxo publicado; quem tem trabalho salvo e não
-publicado continua vendo o seu trabalho, que segue tendo prioridade.
+Agora, quando não existe cópia de trabalho, a tela abre **exatamente o que está no ar**.
+Quem nunca editou vê o fluxo publicado; quem tem trabalho salvo e não publicado
+continua vendo o seu trabalho, que segue tendo prioridade.
 
 Para quem opera uma instalação, nada muda no dia a dia: nenhuma configuração
 nova, nenhum passo de atualização.
