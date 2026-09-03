@@ -99,6 +99,22 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
       "devolve o defeito que derrubou a produção: imagem publicada que morre no " +
       "`docker compose up` da VPS.",
   },
+  // A promoção do canal `stable`, que o PR #498 tirou de dentro da matriz: lá,
+  // cada uma das três imagens movia o canal sozinha ao terminar, e um `stable`
+  // podia apontar para um app novo com worker velho. Desligá-lo aqui não deixa
+  // rastro nenhum: o job vira `skipped`, as três imagens publicam, a tag sai, e
+  // o canal simplesmente NÃO ANDA — quem instala pelo default do compose fica na
+  // versão anterior sem que nada tenha ficado vermelho.
+  "publish-image.yml::promover-stable": {
+    condicao:
+      "github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')",
+    efeito:
+      "As três condições barram um caminho medido cada uma. Sem `push`, um dispatch numa " +
+      "release ANTIGA faria `stable` REGREDIR, e todo self-hoster no default do compose " +
+      "sofreria downgrade silencioso no próximo `up -d` — app velho sobre banco já migrado. " +
+      "Sem `tag`, um dispatch numa branch moveria o canal. Sem o `v`, uma tag de teste o move.",
+  },
+
   "publish-image.yml::imagens-ok": {
     condicao: "always()",
     efeito:
