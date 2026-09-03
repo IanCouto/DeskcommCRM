@@ -208,11 +208,13 @@ function buildDeriveDeps(
   // Thunk, não consulta: nada vai ao banco até a visão ser de fato perguntada,
   // e num provedor direto `visaoEmVigor` nem pergunta.
   //
-  // ⚠️ Por que a consulta é escrita aqui e não reusa `visaoDeclaradaNoCatalogo`:
-  // este worker usa o client TIPADO (`createAdminClient`), e casá-lo contra a
-  // interface estreita daquele helper faz o `tsc` estourar em TS2589 ("type
-  // instantiation is excessively deep") — é o parser de colunas do PostgREST
-  // sobre `Database`, não uma incompatibilidade real. O que precisava ser único
+  // ⚠️ Por que a consulta é escrita aqui, e também em `media-parts.ts`, em vez de
+  // morar num helper compartilhado: casar o client do Supabase contra a interface
+  // estreita de um helper faz o checador estourar em TS2589 ("type instantiation
+  // is excessively deep") — é o parser de colunas do PostgREST, não uma
+  // incompatibilidade real. E ele estoura de forma DESIGUAL: `tsc --noEmit`
+  // passava e o `next build` reprovava, no mesmo arquivo e na mesma linha, o que
+  // torna o helper uma armadilha que só aparece no CI. O que precisava ser único
   // é a REGRA, e ela é: `visaoEmVigor` decide, aqui e em `media-parts.ts`.
   const catalogo = async (): Promise<boolean | null> => {
     const { data } = await admin

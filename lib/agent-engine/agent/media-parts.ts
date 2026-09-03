@@ -8,7 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { LeadContextMessage } from "@/lib/agent-engine/edge/crm/get-lead-context";
 import { modelCapabilities } from "@/lib/agent-engine/edge/llm/capabilities";
-import { visaoDeclaradaNoCatalogo, visaoEmVigor } from "@/lib/ai/pontos/capacidade-em-vigor";
+import { visaoEmVigor } from "@/lib/ai/pontos/capacidade-em-vigor";
 
 
 /**
@@ -43,14 +43,26 @@ export async function buildNativeMediaParts(args: BuildNativeMediaPartsArgs): Pr
   //
   // O PDF continua no registro: o catálogo não tem coluna de PDF, então não há
   // medida para preferir ao palpite.
+  //
+  // ⚠️ A consulta é escrita aqui, e no worker também, em vez de morar num helper
+  // compartilhado: casar o client do Supabase contra a interface estreita de um
+  // helper faz o checador estourar em TS2589 ("type instantiation is excessively
+  // deep") — é o parser de colunas do PostgREST, não incompatibilidade real. E
+  // ele estoura de forma DESIGUAL: `tsc --noEmit` passava e o `next build`
+  // reprovava, no mesmo arquivo e na mesma linha. O que precisava ser único é a
+  // REGRA, e ela é: `visaoEmVigor` decide aqui e em `media-derive-worker.ts`.
+  const catalogo = async (): Promise<boolean | null> => {
+    const { data } = await args.admin
+      .from("ai_models")
+      .select("supports_vision")
+      .eq("provider", args.provider)
+      .eq("model_id", args.model)
+      .is("deprecated_at", null)
+      .maybeSingle();
+    return (data?.supports_vision as boolean | null) ?? null;
+  };
   const caps = {
-    image: (
-      await visaoEmVigor({
-        provider: args.provider,
-        modelId: args.model,
-        catalogo: visaoDeclaradaNoCatalogo(args.admin, args.provider, args.model),
-      })
-    ).enxerga,
+    image: (await visaoEmVigor({ provider: args.provider, modelId: args.model, catalogo })).enxerga,
     pdf: modelCapabilities(args.provider, args.model).pdf,
   };
   if (!caps.image && !caps.pdf) return [];
