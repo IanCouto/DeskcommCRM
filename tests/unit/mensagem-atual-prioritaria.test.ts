@@ -3,7 +3,11 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { buildOpeningMessage, claimsCurrentInboundIsEmpty } from "@/lib/agent-engine/agent/inbound-turn";
+import {
+  MAX_VETOS_DE_FALSO_VAZIO,
+  buildOpeningMessage,
+  claimsCurrentInboundIsEmpty,
+} from "@/lib/agent-engine/agent/inbound-turn";
 import type { LeadContext } from "@/lib/agent-engine/edge/crm/get-lead-context";
 
 describe("mensagem atual do cliente", () => {
@@ -107,6 +111,24 @@ describe("a barreira está no caminho do envio, não numa função de ninguém",
   it("o veto roda dentro de send_message.execute", () => {
     expect(corpoDoSend).toMatch(/claimsCurrentInboundIsEmpty\(body, inboundSignal\)/);
     expect(corpoDoSend).toContain("'false_empty_inbound'");
+  });
+
+  it("o veto tem TETO — persistir solta o envio, com registro", () => {
+    // Sem teto o contador só subia, e um falso positivo teimoso calava o turno
+    // inteiro: o cliente ficava sem resposta por causa de uma frase NOSSA. O
+    // padrão da casa é `MAX_VETOS_DE_VOCABULARIO_INTERNO` — 1ª vez ensina, a 2ª
+    // decide —, e soltar sem registrar seria trocar um erro visível por um mudo.
+    expect(corpoDoSend).toMatch(/falseEmptyInboundVetoCount \+= 1/);
+    expect(corpoDoSend).toMatch(/falseEmptyInboundVetoCount < MAX_VETOS_DE_FALSO_VAZIO/);
+    expect(corpoDoSend).toMatch(
+      /runLog\.warn\(\s*'fail-safe do gate de falso-vazio[\s\S]{0,160}?vetos: falseEmptyInboundVetoCount/,
+    );
+  });
+
+  it("o teto deixa ao menos UMA chance de reescrita antes de soltar", () => {
+    // 1 significaria "veta e já solta": o modelo nunca veria o erro instrutivo e
+    // a barreira viraria telemetria. Mesmo degrau do gate de vocabulário interno.
+    expect(MAX_VETOS_DE_FALSO_VAZIO).toBeGreaterThanOrEqual(2);
   });
 
   it("ele veta ANTES do teto de envios — recusa de conteúdo não gasta a cota do turno", () => {

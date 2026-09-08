@@ -380,6 +380,21 @@ export const AGENT_TOOL_DEFS = {
 export const MAX_VETOS_DE_VOCABULARIO_INTERNO = 2;
 
 /**
+ * O mesmo degrau para o veto de `false_empty_inbound`, e pela mesma assimetria.
+ *
+ * Sem teto, o contador só subia: um falso positivo teimoso da detecção calava o
+ * turno INTEIRO — o cliente ficava sem resposta por causa de uma frase nossa,
+ * não de uma frase dele. Medido no regex desta entrega, num corpus de 6 frases
+ * legítimas de atendimento, 1 disparava o veto. Uma barreira de conteúdo que
+ * não sabe desistir troca um erro visível (a frase falsa) por um invisível (o
+ * silêncio), e o invisível é pior: ninguém o percebe do lado de cá.
+ *
+ * Soltar NÃO é soltar calado — o fail-safe registra (`runLog.warn`), que é o
+ * laço de retorno: o turno em que a barreira errou fica legível depois.
+ */
+export const MAX_VETOS_DE_FALSO_VAZIO = 2;
+
+/**
  * Teto de mensagens FÍSICAS enviadas ao lead por turno quando `knobs.maxSendsPerTurn`
  * está ausente (testes) — produção sempre recebe o knob do env (MAX_SENDS_PER_TURN).
  *
@@ -2439,16 +2454,25 @@ async function executarTurnoDoAgente(
       execute: async ({ body }) => {
         if (claimsCurrentInboundIsEmpty(body, inboundSignal)) {
           falseEmptyInboundVetoCount += 1;
-          return {
-            ok: false,
-            error: {
-              code: 'false_empty_inbound',
-              message:
-                'O cliente enviou texto nesta mensagem. Não diga que ela veio vazia, em branco ou sem texto. ' +
-                `Responda ao pedido real agora: ${JSON.stringify(inboundSignal)}. ` +
-                `Esta é a tentativa de correção ${falseEmptyInboundVetoCount}.`,
-            },
-          };
+          if (falseEmptyInboundVetoCount < MAX_VETOS_DE_FALSO_VAZIO) {
+            return {
+              ok: false,
+              error: {
+                code: 'false_empty_inbound',
+                message:
+                  'O cliente enviou texto nesta mensagem. Não diga que ela veio vazia, em branco ou sem texto. ' +
+                  `Responda ao pedido real agora: ${JSON.stringify(inboundSignal)}. ` +
+                  `Esta é a tentativa de correção ${falseEmptyInboundVetoCount}.`,
+              },
+            };
+          }
+          // Não há segunda cadeia a re-rodar aqui (diferente do vocabulário
+          // interno, que desarma um gate e chama `runBeforeSend` de novo): esta
+          // barreira é local ao `execute`, então soltar é seguir para o resto do
+          // caminho de envio, com a cadeia inteira ainda pela frente.
+          runLog.warn('fail-safe do gate de falso-vazio: envio liberado após vetos seguidos', {
+            vetos: falseEmptyInboundVetoCount,
+          });
         }
         if (seq >= maxSendsPerTurn) {
           return {
