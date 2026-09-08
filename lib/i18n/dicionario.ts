@@ -4096,6 +4096,10 @@ export const DICIONARIO: Traducoes = {
     es: "Solo quien es administrador de esta empresa puede cambiar esto.",
   },
   "Risco aceito em": { es: "Riesgo aceptado el" },
+  "Não consegui verificar se a chamada de voz está ligada nesta empresa. Recarregue a página; se continuar, avise quem cuida da instalação.":
+    {
+      es: "No pude verificar si las llamadas de voz están activadas en esta empresa. Recarga la página; si continúa, avisa a quien administra la instalación.",
+    },
   "Desligar e desconectar o aparelho": { es: "Desactivar y desconectar el dispositivo" },
   "Desligando…": { es: "Desactivando…" },
   "Eu li o aviso acima e aceito o risco de o WhatsApp bloquear esta conta.": {

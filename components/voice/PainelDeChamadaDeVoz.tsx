@@ -51,6 +51,7 @@ export function PainelDeChamadaDeVoz() {
   const t = useT();
   const tagDeIdioma = useTagDeIdioma();
   const [estado, setEstado] = React.useState<Estado | null>(null);
+  const [ilegivel, setIlegivel] = React.useState(false);
   const [carregando, setCarregando] = React.useState(true);
   const [aceitou, setAceitou] = React.useState(false);
   const [salvando, setSalvando] = React.useState(false);
@@ -58,17 +59,28 @@ export function PainelDeChamadaDeVoz() {
   const carregar = React.useCallback(async () => {
     try {
       const res = await fetch("/api/v1/voice/opt-in", { cache: "no-store" });
-      if (!res.ok) {
-        // Silencioso de propósito: um `manager` sem permissão, ou uma
-        // instalação sem a migration, não devem encher a tela de Segurança de
-        // erro vermelho por causa de um painel opcional.
+      if (res.status === 401 || res.status === 403) {
+        // Quem não pode ver, não vê — e isso não é falha, é a resposta certa.
         setEstado(null);
+        setIlegivel(false);
+        return;
+      }
+      if (!res.ok) {
+        // ⚠️ FALHAR ABERTO NA INFORMAÇÃO. Sumir com o painel diria, em silêncio,
+        // que esta organização não tem a feature — e "não sei" tem exatamente a
+        // mesma cara de "está desligada" para quem só olha a tela. Quem precisa
+        // conferir se o segundo aparelho está ou não vinculado ao número não
+        // pode receber essa ambiguidade de graça.
+        setEstado(null);
+        setIlegivel(true);
         return;
       }
       const json = (await res.json()) as { data: Estado };
       setEstado(json.data);
+      setIlegivel(false);
     } catch {
       setEstado(null);
+      setIlegivel(true);
     } finally {
       setCarregando(false);
     }
@@ -108,7 +120,22 @@ export function PainelDeChamadaDeVoz() {
     }
   }
 
-  if (carregando || !estado) return null;
+  if (carregando) return null;
+
+  if (ilegivel) {
+    return (
+      <Card className="space-y-2 p-6">
+        <h2 className="text-sm font-semibold">{t("Chamada de voz pelo WhatsApp")}</h2>
+        <p className="text-sm text-muted-foreground">
+          {t(
+            "Não consegui verificar se a chamada de voz está ligada nesta empresa. Recarregue a página; se continuar, avise quem cuida da instalação.",
+          )}
+        </p>
+      </Card>
+    );
+  }
+
+  if (!estado) return null;
 
   return (
     <Card className="space-y-4 p-6">
