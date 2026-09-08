@@ -80,8 +80,25 @@ describe("barreira contra falso aviso de mensagem vazia", () => {
     expect(claimsCurrentInboundIsEmpty(candidate, inbound)).toBe(true);
   });
 
-  it("permite uma resposta que trata o pedido real", () => {
-    expect(claimsCurrentInboundIsEmpty("Claro. Qual dia e período você prefere para a consulta?", inbound)).toBe(false);
+  /**
+   * O CORPUS MEDIDO — não é ilustração, é a prova de um defeito real.
+   *
+   * A primeira versão desta detecção aceitava `ela` como referência a "mensagem".
+   * Rodado contra estas seis frases legítimas de atendimento, o regex vetava a
+   * primeira: um pronome casa com qualquer sujeito feminino da frase, e "vazio"
+   * é palavra corrente numa agenda. Ficam aqui nomeadas para que alargar a
+   * referência de novo custe vermelho, em vez de custar um turno mudo.
+   */
+  it.each([
+    // ⬇️ ESTA é a que disparava. Foi ela que tirou `ela` do regex.
+    "Consegui uma vaga com a Drª Mara — ela ficou com a tarde vazia na quinta.",
+    "A agenda dela está vazia na quinta, posso te encaixar às 15h?",
+    "Vi aqui e a lista de espera está vazia, então dá pra marcar hoje mesmo.",
+    "Sua ficha está sem texto no campo de observações — quer que eu preencha?",
+    "Claro. Qual dia e período você prefere para a consulta?",
+    "Perfeito, marquei para terça às 9h com a Drª Mara.",
+  ])("deixa passar a frase legítima: %s", (candidate) => {
+    expect(claimsCurrentInboundIsEmpty(candidate, inbound)).toBe(false);
   });
 
   it("não arma quando a mensagem de fato não tem texto", () => {

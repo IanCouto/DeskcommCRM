@@ -1256,7 +1256,15 @@ export function claimsCurrentInboundIsEmpty(candidate: string, currentInbound: s
   if (currentInbound.trim() === '') return false;
 
   const emptyClaim = '(?:em\\s+branco|vazi[ao]|sem\\s+texto)';
-  const messageReference = '(?:mensagem|texto|recado|última\\s+mensagem|ela)';
+  // ⚠️ `ela` NÃO entra aqui, e a razão está medida. Como pronome, ela casa com
+  // qualquer sujeito feminino da frase — e "vazio" é palavra corrente numa
+  // agenda. Num corpus de 6 frases legítimas de atendimento, a alternativa
+  // vetava 1: "Consegui uma vaga com a Drª Mara — ela ficou com a tarde vazia na
+  // quinta." O preço de tirá-la é não pegar a frase falsa escrita SÓ com
+  // pronome ("ela veio vazia"); o preço de mantê-la era barrar atendimento
+  // legítimo, e esse é o lado que cala o cliente. As seis frases estão no teste,
+  // nomeadas — quem quiser alargar de novo alarga contra elas.
+  const messageReference = '(?:mensagem|texto|recado|última\\s+mensagem)';
   return new RegExp(
     `\\b${messageReference}\\b[\\s\\S]{0,90}\\b${emptyClaim}\\b|\\b${emptyClaim}\\b[\\s\\S]{0,90}\\b${messageReference}\\b`,
     'i',
