@@ -201,6 +201,18 @@ export const AUDIT_ACTIONS = [
   // Chamada de voz WhatsApp (WaCalls, spec 18) — pareamento do segundo
   // dispositivo vinculado, opt-in por org. Admin only.
   "voice.session_pair_started",
+  // As mutações da chamada em si. Todas auditadas porque todas têm efeito no
+  // mundo: uma ligação sai do CRM para o telefone de uma pessoa, alguém a
+  // atende ou a recusa, e alguém a derruba. Um registro em `voice_calls` diz o
+  // QUE aconteceu; a trilha diz QUEM mandou acontecer, e são perguntas
+  // diferentes quando o time inteiro compartilha o mesmo número.
+  "voice.call_started",
+  "voice.call_accepted",
+  "voice.call_rejected",
+  "voice.call_ended",
+  // Troca de SDP: é o que abre o ÁUDIO de uma ligação para um navegador. Sem
+  // esta linha não há como responder "quem estava ouvindo esta conversa".
+  "voice.call_media_attached",
   "authz.denied",
   "team.role_changed",
   "leads.bulk_assigned",

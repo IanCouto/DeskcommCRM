@@ -19,6 +19,10 @@ export interface VoiceCallRow {
   end_reason: string | null;
   started_at: string;
   answered_at: string | null;
+  /** Quem está NA LINHA. `null` numa chamada recebida que ninguém atendeu. */
+  owner_user_id?: string | null;
+  /** Quem discou pelo CRM. `null` em toda ligação recebida. */
+  created_by?: string | null;
 }
 
 interface VoiceCallsListResponse {
@@ -41,7 +45,7 @@ function ehRelevante(row: VoiceCallRow): boolean {
  * conectado antes do Realtime confirmar `connected`), o que é esperado.
  */
 export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement | null>) {
-  const { activeOrg } = useAuth();
+  const { user, activeOrg } = useAuth();
   /**
    * Quem NÃO pode ligar também não sonda e não assina.
    *
@@ -75,6 +79,25 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
   useEffect(() => {
     callRef.current = call;
   }, [call]);
+
+  /**
+   * A ligação é MINHA?
+   *
+   * O banner de chamada recebida toca para todo mundo, e isso está certo: é um
+   * telefone de escritório, e quem estiver perto atende. O PAINEL de chamada em
+   * andamento não — ele aparecia para todos os colegas assim que alguém
+   * discava, com botão de desligar e de mudo funcionando sobre a ligação de
+   * outra pessoa. E o áudio ia junto: `conectarMidia` abria microfone e
+   * `RTCPeerConnection` no navegador de quem só estava passando pela tela.
+   *
+   * A mesma regra que o servidor aplica em `podeEncerrar`
+   * (`lib/wacalls/calls.ts`), aqui só para não OFERECER o que lá seria 403.
+   */
+  const minha =
+    !!call &&
+    (call.owner_user_id
+      ? call.owner_user_id === user.id
+      : !!call.created_by && call.created_by === user.id);
 
   const teardownMedia = useCallback(() => {
     try {
@@ -233,13 +256,16 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
   // WaCalls só aceita a troca de SDP depois que o `<call>` foi realmente
   // aceito do lado do WhatsApp (§4.1 da spec).
   useEffect(() => {
-    if (call?.status === "connected" && !pcRef.current && !connectingMedia) {
+    // `minha` na condição: sem isso, o navegador de todo colega logado abria
+    // microfone e RTCPeerConnection na ligação de outra pessoa assim que o
+    // Realtime dizia `connected`.
+    if (minha && call?.status === "connected" && !pcRef.current && !connectingMedia) {
       void conectarMidia(call.id);
     }
     if ((call?.status === "ended" || !call) && (pcRef.current || localStreamRef.current)) {
       teardownMedia();
     }
-  }, [call, connectingMedia, conectarMidia, teardownMedia]);
+  }, [minha, call, connectingMedia, conectarMidia, teardownMedia]);
 
   const startCall = useCallback(async (contactId: string) => {
     if (!podeLigar) return;
@@ -298,6 +324,8 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
 
   return {
     call,
+    /** `true` só quando quem está vendo é quem está na linha. */
+    minha,
     muted,
     connectingMedia,
     startCall,

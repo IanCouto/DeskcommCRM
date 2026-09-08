@@ -7,7 +7,8 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { ok } from "@/lib/api/wrappers";
+import { fail, ok } from "@/lib/api/wrappers";
+import { logger } from "@/lib/logger";
 import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 
@@ -26,11 +27,26 @@ export async function GET(req: Request): Promise<Response> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("voice_calls")
-    .select("id, contact_id, direction, peer_phone, status, end_reason, started_at, answered_at, ended_at, duration_ms")
+    .select(
+      "id, contact_id, direction, peer_phone, status, end_reason, started_at, answered_at, ended_at, duration_ms, owner_user_id, created_by",
+    )
     .eq("organization_id", activeOrg.orgId)
     .order("started_at", { ascending: false })
     .limit(limit);
 
-  if (error) return ok([], { requestId, meta: { has_more: false } });
+  // ERRO NÃO É LISTA VAZIA.
+  //
+  // `ok([])` fazia "a consulta falhou" ficar indistinguível de "esta
+  // organização nunca ligou para ninguém" — e a segunda frase é a que a tela
+  // conta. Além de esconder a falha, é o desfecho que convida alguém a concluir
+  // que o histórico se perdeu. Falhar ABERTO na informação, sempre.
+  if (error) {
+    logger.error("voice: histórico de chamadas falhou", {
+      request_id: requestId,
+      organization_id: activeOrg.orgId,
+      error: error.message,
+    });
+    return fail("internal_error", error.message, 500, { requestId });
+  }
   return ok(data ?? [], { requestId, meta: { has_more: (data?.length ?? 0) === limit } });
 }

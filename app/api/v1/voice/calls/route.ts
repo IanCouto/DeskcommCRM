@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { ok, fail } from "@/lib/api/wrappers";
+import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { logger } from "@/lib/logger";
@@ -56,12 +57,37 @@ export async function POST(req: Request): Promise<Response> {
 
   const { data: contactRaw } = await supabase
     .from("contacts")
-    .select("id, phone_number, name")
+    .select("id, phone_number, name, is_blocked, is_anonymized")
     .eq("organization_id", activeOrg.orgId)
     .eq("id", parsed.data.contactId)
     .maybeSingle();
-  const contact = contactRaw as { id: string; phone_number: string | null; name: string | null } | null;
+  const contact = contactRaw as {
+    id: string;
+    phone_number: string | null;
+    name: string | null;
+    is_blocked: boolean | null;
+    is_anonymized: boolean | null;
+  } | null;
   if (!contact) return fail("not_found", "Contato não encontrado.", 404, { requestId });
+
+  // QUEM PEDIU PARA NÃO SER INCOMODADO NÃO RECEBE LIGAÇÃO.
+  //
+  // A seleção era `id, phone_number, name` — as duas flags nem chegavam à rota,
+  // e o discador ligava para quem tinha mandado "PARAR". Um telefonema é MAIS
+  // intrusivo que a mensagem que `is_blocked` já barra em
+  // `app/api/v1/messages/_handler.ts`: ele toca no bolso da pessoa. Mesmo 403
+  // `forbidden` de lá, para que a tela trate os dois do mesmo jeito.
+  if (contact.is_blocked) {
+    return fail("forbidden", "Contato bloqueou o atendimento.", 403, { requestId });
+  }
+  // Contato anonimizado não tem mais telefone real guardado, e o que sobrou não
+  // é dele. 422 e não 403, pela mesma assimetria que o envio de mensagem já
+  // usa: não é permissão que falta, é o alvo que não existe mais.
+  if (contact.is_anonymized) {
+    return fail("contact_anonymized", "Contato anonimizado não pode ser chamado.", 422, {
+      requestId,
+    });
+  }
   if (!contact.phone_number) {
     return fail("contact_without_phone", "Este contato não tem telefone cadastrado.", 422, { requestId });
   }
@@ -80,10 +106,24 @@ export async function POST(req: Request): Promise<Response> {
         peer_phone: contact.phone_number,
         status: "starting",
         created_by: user.id,
+        // Quem discou já está na linha: o dono nasce aqui, e não espera o SSE
+        // devolver o `owner`. Sem isto haveria uma janela em que a ligação é de
+        // ninguém — e "de ninguém" é o estado em que qualquer colega desliga.
+        owner_user_id: user.id,
       })
       .select("id")
       .single();
     if (insertErr || !inserted) throw new Error(`voice_calls insert: ${insertErr?.message}`);
+
+    void audit({
+      action: "voice.call_started",
+      actorUserId: user.id,
+      organizationId: activeOrg.orgId,
+      resourceType: "voice_call",
+      resourceId: (inserted as { id: string }).id,
+      requestId,
+      metadata: { contact_id: contact.id, direction: "outbound" },
+    });
 
     return ok(
       { id: (inserted as { id: string }).id, callId: call.callId, status: "starting" },

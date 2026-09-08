@@ -7,11 +7,12 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { ok, fail } from "@/lib/api/wrappers";
+import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
 import { getWacallsClient, wacallsFriendlyError } from "@/lib/wacalls/client";
-import { resolveVoiceCall } from "@/lib/wacalls/calls";
+import { podeEncerrar, resolveVoiceCall } from "@/lib/wacalls/calls";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function POST(
 
   const authz = await requireRole("agent", { requestId, resource: "voice_calls" });
   if (!authz.ok) return authz.response;
-  const { org: activeOrg } = authz;
+  const { user, org: activeOrg } = authz;
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("invalid_body", "sdpOffer é obrigatório.", 400, { requestId });
@@ -43,12 +44,34 @@ export async function POST(
   const call = await resolveVoiceCall(supabase, activeOrg.orgId, id);
   if (!call) return fail("not_found", "Chamada não encontrada.", 404, { requestId });
 
+  // Trocar SDP é ABRIR O ÁUDIO desta ligação para um navegador. A mesma regra
+  // de quem pode desligar vale, e por um motivo mais forte: sem ela, qualquer
+  // colega da organização ligava o próprio microfone e o próprio alto-falante
+  // na conversa de outra pessoa com um cliente.
+  if (!podeEncerrar(call, user.id)) {
+    return fail(
+      "voice_call_not_yours",
+      "Esta chamada é de outra pessoa.",
+      403,
+      { requestId },
+    );
+  }
+
   try {
     const { sdpAnswer } = await wacalls.exchangeWebrtc(
       call.wacallsSessionId,
       call.wacallsCallId,
       parsed.data.sdpOffer,
     );
+    void audit({
+      action: "voice.call_media_attached",
+      actorUserId: user.id,
+      organizationId: activeOrg.orgId,
+      resourceType: "voice_call",
+      resourceId: id,
+      requestId,
+      metadata: { contact_id: call.contactId },
+    });
     return ok({ sdpAnswer }, { requestId });
   } catch (err) {
     return fail("wacalls_error", wacallsFriendlyError(err), 502, { requestId });

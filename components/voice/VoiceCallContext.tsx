@@ -24,18 +24,22 @@ const VoiceCallCtx = createContext<VoiceCallSession | null>(null);
 export function VoiceCallProvider({ children }: { children: ReactNode }) {
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const session = useVoiceCallSession(remoteAudioRef);
-  const { call } = session;
+  const { call, minha } = session;
 
   return (
     <VoiceCallCtx.Provider value={session}>
       {children}
       <audio ref={remoteAudioRef} autoPlay />
-      {/* Chamada recebida ainda não atendida: banner de decisão (§5.2).
-          Qualquer outro estado não-encerrado (discando, tocando pro outro
-          lado, conectada): painel de chamada em andamento (§5.3). */}
-      {call?.direction === "inbound" && call.status === "ringing" ? (
+      {/* Chamada recebida que ninguém assumiu: banner de decisão (§5.2), e ele
+          toca para TODO MUNDO de propósito — é telefone de escritório, quem
+          estiver perto atende.
+
+          O painel de chamada em andamento (§5.3) é o oposto: só de quem está na
+          linha. Ele aparecia para o escritório inteiro assim que alguém discava,
+          com botão de desligar ativo sobre a ligação alheia. */}
+      {call?.direction === "inbound" && call.status === "ringing" && !call.owner_user_id ? (
         <IncomingCallBanner />
-      ) : call && call.status !== "ended" ? (
+      ) : minha && call && call.status !== "ended" ? (
         <ActiveCallPanel />
       ) : null}
     </VoiceCallCtx.Provider>

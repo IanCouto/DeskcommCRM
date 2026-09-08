@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 
 import { ok, fail } from "@/lib/api/wrappers";
+import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
@@ -26,7 +27,7 @@ export async function POST(
 
   const authz = await requireRole("agent", { requestId, resource: "voice_calls" });
   if (!authz.ok) return authz.response;
-  const { org: activeOrg } = authz;
+  const { user, org: activeOrg } = authz;
 
   const wacalls = getWacallsClient();
   if (!wacalls) return fail("wacalls_not_configured", "Chamada de voz não configurada.", 503, { requestId });
@@ -37,6 +38,15 @@ export async function POST(
 
   try {
     await wacalls.rejectCall(call.wacallsSessionId, call.wacallsCallId);
+    void audit({
+      action: "voice.call_rejected",
+      actorUserId: user.id,
+      organizationId: activeOrg.orgId,
+      resourceType: "voice_call",
+      resourceId: id,
+      requestId,
+      metadata: { contact_id: call.contactId },
+    });
     return ok({ id, status: "ended" }, { requestId });
   } catch (err) {
     return fail("wacalls_error", wacallsFriendlyError(err), 502, { requestId });

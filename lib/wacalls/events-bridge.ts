@@ -15,6 +15,7 @@
 import type pg from 'pg';
 
 import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
+import { motivoDaChamadaEmPortugues } from '@/lib/wacalls/motivo-da-chamada';
 
 import type { Logger } from '../agent-engine/obs/logger';
 
@@ -24,9 +25,98 @@ export interface WacallsBridgeConfig {
   maxBackoffMs: number;
 }
 
-interface WacallsSessionMap {
+export interface WacallsSessionMap {
   channelSessionId: string;
   organizationId: string;
+}
+
+/**
+ * Enquanto a ligação está de pé, a IA não fala naquela conversa.
+ *
+ * Reaproveita o mecanismo que já existe para "um humano assumiu"
+ * (`conversations.bot_silenced_until`), lido por `isLeadInHandoff`
+ * (`lib/agent-engine/agent/human-handoff.ts`) e pelo gate de elegibilidade
+ * (`lib/ai/elegibilidade/gate.ts`) antes de qualquer chamada de modelo. É o
+ * mesmo raciocínio de `lib/escalacao/atendimento-manual.ts`: uma pessoa está
+ * falando com o cliente AGORA, e o agente respondendo por cima é o pior
+ * atropelo que o produto pode cometer.
+ *
+ * NÃO mexe em `assignee_kind`: aquele CHECK exige `assigned_to_user_id`, e quem
+ * atende do aparelho pareado não é necessariamente usuário do CRM. NÃO mexe em
+ * `contacts.force_human`: aquilo tranca o contato inteiro, e uma ligação não é
+ * um bloqueio.
+ */
+const MOTIVO_DO_SILENCIO = 'Ligação de voz em andamento';
+
+/**
+ * Teto do silêncio — anti-morte, não estimativa de duração.
+ *
+ * `'infinity'` seria o valor "certo" enquanto a ligação vive, e é exatamente o
+ * que não pode ser usado: se o worker cair entre o `connected` e o `call-ended`
+ * (os dois vêm da MESMA stream SSE, então os dois se perdem juntos), a conversa
+ * ficaria muda para sempre e ninguém saberia por quê. Com teto, o pior caso é
+ * a IA calada por duas horas — e o `call-ended`, quando chega, devolve a voz na
+ * hora.
+ */
+const TETO_DO_SILENCIO = "now() + interval '2 hours'";
+
+/** A conversa 1:1 mais recente do contato — a mesma regra de `fn_service_observe`. */
+const CONVERSA_DO_CONTATO = `
+  select id from conversations
+   where organization_id = $1 and contact_id = $2 and not is_group
+   order by last_message_at desc nulls last, created_at desc
+   limit 1`;
+
+async function calarIaDuranteALigacao(
+  pool: pg.Pool,
+  organizationId: string,
+  contactId: string,
+): Promise<void> {
+  await pool.query(
+    `update conversations
+        set bot_silenced_until = ${TETO_DO_SILENCIO},
+            last_handoff_at = now(),
+            last_handoff_reason = $3,
+            updated_at = now()
+      where id = (${CONVERSA_DO_CONTATO})
+        -- NUNCA ENCURTA. Um handoff humano durável (infinity) vence este
+        -- teto, e escrever por cima devolveria à IA uma conversa que uma pessoa
+        -- tinha tomado para si de propósito. Mesma regra de atendimento-manual.
+        and (bot_silenced_until is null or bot_silenced_until < ${TETO_DO_SILENCIO})`,
+    [organizationId, contactId, MOTIVO_DO_SILENCIO],
+  );
+}
+
+async function devolverAVozDaIa(
+  pool: pg.Pool,
+  organizationId: string,
+  contactId: string,
+): Promise<void> {
+  await pool.query(
+    // Só desfaz o que ESTA ponte fez. Sem o predicado do motivo, desligar o
+    // telefone devolveria à IA uma conversa que um atendente tinha assumido no
+    // meio da ligação — silêncio de outro dono, apagado por engano.
+    `update conversations
+        set bot_silenced_until = null,
+            last_handoff_at = null,
+            last_handoff_reason = null,
+            updated_at = now()
+      where organization_id = $1 and contact_id = $2 and last_handoff_reason = $3`,
+    [organizationId, contactId, MOTIVO_DO_SILENCIO],
+  );
+}
+
+/**
+ * O `owner` que o upstream devolve é o `X-Client-Id` que NÓS mandamos ao iniciar
+ * ou aceitar a chamada — sempre o `auth.users.id` da sessão autenticada
+ * (`lib/wacalls/client.ts`). Mas o campo é texto livre do ponto de vista do
+ * WaCalls: uma chamada atendida no próprio aparelho pareado traz outra coisa, e
+ * gravar isso numa coluna com FK para `auth.users` derrubaria a escrita inteira.
+ * Só passa o que tem forma de uuid.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function donoValido(owner: unknown): string | null {
+  return typeof owner === 'string' && UUID.test(owner) ? owner : null;
 }
 
 /** `5511999999999@s.whatsapp.net` → `5511999999999`. JID sem o domínio. */
@@ -61,60 +151,108 @@ async function handleAuthState(
   log: Logger,
 ): Promise<void> {
   if (!ev.paired) return;
-  // Pareado agora — grava jid/paired_at uma vez (idempotente: `is distinct
-  // from` evita reescrever a cada tick de heartbeat que o WaCalls também
-  // manda como auth-state).
-  const { rowCount } = await pool.query(
-    `update channel_sessions
-        set wacalls_paired_at = coalesce(wacalls_paired_at, now()),
+  //
+  // A guarda era `wacalls_paired_at is distinct from now()`, e o comentário
+  // dizia que isso evitava reescrever a cada heartbeat. Não evitava nada:
+  // `now()` é sempre distinto de qualquer valor gravado antes, inclusive de si
+  // mesmo em outra transação. Cada `auth-state` do WaCalls — que chegam de
+  // minuto em minuto enquanto a sessão vive — reescrevia a linha e logava
+  // "sessão pareada" de novo, com o log dizendo o oposto do que acontecia.
+  //
+  // A guarda que funciona é a que pergunta o que MUDA: primeiro pareamento
+  // (`antes is null`) ou volta ao ar depois de uma queda (`status` diferente de
+  // WORKING). Heartbeat de sessão já pareada e já WORKING casa zero linhas.
+  const { rows } = await pool.query<{ primeiro: boolean }>(
+    `update channel_sessions c
+        set wacalls_paired_at = coalesce(c.wacalls_paired_at, now()),
             status = 'WORKING',
             updated_at = now()
-      where id = $1 and wacalls_paired_at is distinct from now()`,
+       from (select id, wacalls_paired_at as antes from channel_sessions where id = $1) o
+      where c.id = o.id
+        and (o.antes is null or c.status is distinct from 'WORKING')
+     returning (o.antes is null) as primeiro`,
     [sess.channelSessionId],
   );
-  if ((rowCount ?? 0) > 0) {
+  if (rows[0]?.primeiro) {
     log.info('wacalls: sessão pareada', { channel_session_id: sess.channelSessionId });
+  } else if (rows.length > 0) {
+    log.info('wacalls: sessão de voz voltou ao ar', {
+      channel_session_id: sess.channelSessionId,
+    });
   }
 }
 
 async function handleCallStatus(
   pool: pg.Pool,
   sess: WacallsSessionMap,
-  ev: { id: string; status: string; peer: string; direction?: string; startedAt: number },
+  ev: {
+    id: string;
+    status: string;
+    peer: string;
+    direction?: string;
+    startedAt: number;
+    owner?: unknown;
+  },
   log: Logger,
 ): Promise<void> {
   const peerPhone = peerToPhone(ev.peer);
   const direction = ev.direction === 'outbound' ? 'outbound' : 'inbound';
+  // Quem está na linha. O upstream manda em TODO `call-status`; a versão
+  // anterior desta ponte descartava, e o resultado era uma ligação sem dono:
+  // qualquer colega da organização desligava a chamada de qualquer outro, a
+  // linha do tempo dizia "Sistema", e o painel de chamada em andamento
+  // aparecia para o escritório inteiro.
+  const dono = donoValido(ev.owner);
 
-  await pool.query(
+  const { rows } = await pool.query<{ contact_id: string | null }>(
     `insert into voice_calls
        (organization_id, channel_session_id, contact_id, wacalls_call_id, direction,
-        peer_phone, status, started_at)
+        peer_phone, status, started_at, owner_user_id)
      values ($1, $2,
              (select id from contacts where organization_id = $1 and (phone_number = $5 or wa_lid = $5) and is_merged_into is null limit 1),
-             $3, $4, $5, $6, to_timestamp($7 / 1000.0))
+             $3, $4, $5, $6, to_timestamp($7 / 1000.0), $8)
      on conflict (organization_id, wacalls_call_id) do update
        set status = excluded.status,
            contact_id = coalesce(voice_calls.contact_id, excluded.contact_id),
+           -- coalesce e nao excluded: o dono e gravado pela rota de atender
+           -- (que sabe QUEM clicou) antes de o SSE chegar, e um evento posterior
+           -- sem owner nao pode apagar essa informacao.
+           owner_user_id = coalesce(voice_calls.owner_user_id, excluded.owner_user_id),
            answered_at = case
              when voice_calls.answered_at is null and excluded.status = 'connected'
                then now()
              else voice_calls.answered_at
            end,
-           updated_at = now()`,
-    [sess.organizationId, sess.channelSessionId, ev.id, direction, peerPhone, ev.status, ev.startedAt],
+           updated_at = now()
+     returning contact_id`,
+    [
+      sess.organizationId,
+      sess.channelSessionId,
+      ev.id,
+      direction,
+      peerPhone,
+      ev.status,
+      ev.startedAt,
+      dono,
+    ],
   );
   log.info('wacalls: call-status', {
     channel_session_id: sess.channelSessionId,
     wacalls_call_id: ev.id,
     status: ev.status,
   });
+
+  const contactId = rows[0]?.contact_id ?? null;
+  if (ev.status === 'connected' && contactId) {
+    await calarIaDuranteALigacao(pool, sess.organizationId, contactId);
+    log.info('wacalls: IA calada enquanto a ligação está de pé', { contact_id: contactId });
+  }
 }
 
 async function handleCallEnded(
   pool: pg.Pool,
   sess: WacallsSessionMap,
-  ev: { id: string; reason: string; endedAt: number },
+  ev: { id: string; reason: string; endedAt: number; owner?: unknown },
   log: Logger,
 ): Promise<void> {
   const { rows } = await pool.query<{
@@ -122,17 +260,20 @@ async function handleCallEnded(
     contact_id: string | null;
     started_at: string;
     answered_at: string | null;
+    peer_phone: string;
+    owner_user_id: string | null;
   }>(
     `update voice_calls
         set status = 'ended', end_reason = $3, ended_at = to_timestamp($4 / 1000.0),
+            owner_user_id = coalesce(owner_user_id, $5),
             duration_ms = case
               when answered_at is not null then $4 - (extract(epoch from answered_at) * 1000)::bigint
               else null
             end,
             updated_at = now()
       where organization_id = $1 and wacalls_call_id = $2
-      returning id, contact_id, started_at, answered_at`,
-    [sess.organizationId, ev.id, ev.reason, ev.endedAt],
+      returning id, contact_id, started_at, answered_at, peer_phone, owner_user_id`,
+    [sess.organizationId, ev.id, ev.reason, ev.endedAt, donoValido(ev.owner)],
   );
   const row = rows[0];
   if (!row) {
@@ -142,24 +283,51 @@ async function handleCallEnded(
     return;
   }
 
+  const atendida = !!row.answered_at;
+
+  // Desligou: a IA volta a falar. Antes de qualquer outra coisa — se a linha
+  // abaixo falhar, o pior desfecho é um aviso que não nasceu, não uma conversa
+  // que ficou muda.
+  if (row.contact_id) {
+    await devolverAVozDaIa(pool, sess.organizationId, row.contact_id);
+  }
+
   // Perdida = nunca atendida. `end_reason` do upstream não distingue "tocou e
   // ninguém pegou" de "operador recusou" — para o inbox os dois merecem
   // alerta igual: alguém precisa ligar de volta.
-  if (!row.answered_at) {
+  //
+  // `ref_kind = 'contact'` e não `'voice_call'`: a ficha do contato é onde mora
+  // o botão de ligar, então abrir o contexto e FAZER o que o aviso pede viram o
+  // mesmo clique (ver `POLITICAS_DE_AVISO` em `lib/ai/inbox-destino.ts`).
+  // Chamada de número que não casou com contato nenhum entra sem referência —
+  // o telefone está no título, e o aviso continua sendo aviso.
+  if (!atendida) {
     await pool.query(
       `insert into agent_inbox_items (organization_id, kind, severity, title, body, ref_kind, ref_id)
-       values ($1, 'voice_call_missed', 'warn', 'Chamada de voz perdida', $2, 'voice_call', $3)`,
-      [sess.organizationId, `Motivo: ${ev.reason}`, row.id],
+       values ($1, 'voice_call_missed', 'warn', $2, $3, $4, $5)`,
+      [
+        sess.organizationId,
+        `Chamada perdida de ${row.peer_phone}`,
+        motivoDaChamadaEmPortugues(ev.reason),
+        row.contact_id ? 'contact' : null,
+        row.contact_id,
+      ],
     );
   }
 
+  // `status` EXPLÍCITO. Este é evento de REGISTRO, não comando: ninguém precisa
+  // consumi-lo, e `lib/event-log/drain.ts` só enxerga tipos com handler
+  // declarado (`.in("event_type", handledTypes)`). Nascendo `pending`, a linha
+  // ficava pendurada para sempre com cara de trabalho na fila, e o `event_log`
+  // não tem poda. Mesmo padrão de `agent.operator_turn`
+  // (`lib/agent-engine/agent/operator-turn.ts`).
   await pool.query(
-    `insert into event_log (organization_id, event_type, entity_kind, entity_id, payload)
-     values ($1, 'voice_call.ended', 'voice_call', $2, $3)`,
+    `insert into event_log (organization_id, event_type, entity_kind, entity_id, status, payload)
+     values ($1, 'voice_call.ended', 'voice_call', $2, 'done', $3)`,
     [
       sess.organizationId,
       row.id,
-      JSON.stringify({ wacalls_call_id: ev.id, end_reason: ev.reason, answered: !!row.answered_at }),
+      JSON.stringify({ wacalls_call_id: ev.id, end_reason: ev.reason, answered: atendida }),
     ],
   );
 
@@ -168,11 +336,23 @@ async function handleCallEnded(
       pool,
       organizationId: sess.organizationId,
       contactId: row.contact_id,
-      type: 'voice_call',
-      reason: `Chamada de voz encerrada (${ev.reason})`,
+      // DOIS tipos, e a diferença não é cosmética: `voice_call` entra na lista
+      // positiva de `fn_update_last_activity_at` (migration 0079) e portanto
+      // quebra o silêncio do negócio; `voice_call_missed` NÃO entra. Um
+      // telefone que tocou sem ninguém atender é constatação de silêncio, não
+      // interação — carimbar `last_activity_at` ali esfriaria o Radar de Risco
+      // por um contato com quem ninguém falou.
+      type: atendida ? 'voice_call' : 'voice_call_missed',
+      reason: atendida
+        ? 'Chamada de voz atendida'
+        : `Chamada de voz perdida — ${motivoDaChamadaEmPortugues(ev.reason)}`,
       sourceModule: 'voice_calls',
       sourceId: row.id,
-      payload: { end_reason: ev.reason, answered: !!row.answered_at },
+      // Quem atendeu assina. Sem isto a linha caía em `webhook_source` →
+      // `actor_kind='system'`, e a linha do tempo do negócio dizia "Sistema"
+      // onde havia uma pessoa.
+      usuarioId: row.owner_user_id,
+      payload: { end_reason: ev.reason, answered: atendida },
     });
     if (!result.routed) {
       log.info('wacalls: call-ended sem lead aberto, sem atividade', {
@@ -183,8 +363,17 @@ async function handleCallEnded(
   }
 }
 
-/** Uma linha SSE `data: {...}` já sem o prefixo — parseada e despachada. */
-async function dispatch(
+/**
+ * Uma linha SSE `data: {...}` já sem o prefixo — parseada e despachada.
+ *
+ * Exportada para que `tests/invariants/voz-ponte-de-eventos.test.ts` exercite os
+ * efeitos desta ponte contra um Postgres de verdade. O que ela faz é quase todo
+ * SQL — silenciar a IA, abrir aviso, gravar evento, carimbar a linha do tempo —
+ * e um dublê de `pg.Pool` mediria o TEXTO das consultas, não o estado que elas
+ * deixam. Nada mais deste módulo é público: o worker chama
+ * `runVoiceCallsBridgeLoop`.
+ */
+export async function despacharEventoWacalls(
   pool: pg.Pool,
   cache: Map<string, WacallsSessionMap>,
   raw: string,
@@ -215,12 +404,24 @@ async function dispatch(
       await handleCallStatus(
         pool,
         sess,
-        ev as { id: string; status: string; peer: string; direction?: string; startedAt: number },
+        ev as {
+          id: string;
+          status: string;
+          peer: string;
+          direction?: string;
+          startedAt: number;
+          owner?: unknown;
+        },
         log,
       );
       return;
     case 'call-ended':
-      await handleCallEnded(pool, sess, ev as { id: string; reason: string; endedAt: number }, log);
+      await handleCallEnded(
+        pool,
+        sess,
+        ev as { id: string; reason: string; endedAt: number; owner?: unknown },
+        log,
+      );
       return;
     default:
       // session-qr / incoming / incoming-claimed: pura notificação de UI
@@ -253,7 +454,7 @@ async function pumpSse(
         const payload = line.slice(5).trim();
         if (!payload) continue;
         try {
-          await dispatch(pool, cache, payload, log);
+          await despacharEventoWacalls(pool, cache, payload, log);
         } catch (err) {
           log.error('wacalls: evento falhou ao processar', {
             error: (err instanceof Error ? err.message : String(err)).slice(0, 300),
