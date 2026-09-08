@@ -7148,10 +7148,23 @@ export const DICIONARIO: Traducoes = {
     es: "Listo para llamar — el botón de llamar aparece en los contactos con teléfono.",
   },
   "Chamada de voz pareada!": { es: "¡Llamada de voz emparejada!" },
+  // Central de avisos: o RÓTULO DO KIND e a ORIENTAÇÃO passam por `t()`; o
+  // título e o corpo do aviso NÃO — são linha de `agent_inbox_items`, escrita
+  // pelo worker com dado de gente dentro (o telefone de quem ligou), e o
+  // dicionário é chaveado pela frase inteira. Mesma regra de todo kind irmão:
+  // nenhum título de aviso está aqui.
+  "Alguém ligou e ninguém atendeu": { es: "Alguien llamó y nadie atendió" },
+  "Retorne a ligação quando puder — quem ligou não foi atendido.": {
+    es: "Devuelva la llamada cuando pueda — quien llamó no fue atendido.",
+  },
+  "Ligar de volta": { es: "Devolver la llamada" },
+  // Diálogo de exclusão de canal (`frasesDoImpacto`): singular e plural.
+  "chamada de voz": { es: "llamada de voz" },
+  "chamadas de voz": { es: "llamadas de voz" },
   "Não foi possível iniciar o pareamento.": { es: "No fue posible iniciar el emparejamiento." },
 
   // Mensajes de error de importación de planilha (lib/catalogo/planilha.ts)
-  "A planilha está vazia.": { es: "La planilha está vacía." },
+  "A planilha está vazia.": { es: "La planilla está vacía." },
   // Uma frase por combinação do que falta: a recusa NOMEIA a coluna ausente, e
   // pedir a coluna que a pessoa já tem é o que faz ela desistir da importação.
   "A planilha precisa de uma coluna de nome e de preço. Encontrei: ": {
