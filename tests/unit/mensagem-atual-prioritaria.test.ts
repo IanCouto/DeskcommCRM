@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { buildOpeningMessage } from "@/lib/agent-engine/agent/inbound-turn";
+import { buildOpeningMessage, claimsCurrentInboundIsEmpty } from "@/lib/agent-engine/agent/inbound-turn";
 import type { LeadContext } from "@/lib/agent-engine/edge/crm/get-lead-context";
 
 describe("mensagem atual do cliente", () => {
@@ -59,5 +62,66 @@ describe("mensagem atual do cliente", () => {
 
     expect(abertura).toContain('"texto":"Quero agendar com a Drª Mara."');
     expect(abertura).not.toContain('"texto":"registro concorrente sem conteúdo"');
+  });
+});
+
+describe("barreira contra falso aviso de mensagem vazia", () => {
+  const inbound = "Eu quero agendar uma consulta com a Drª Mara, já tinha dito antes.";
+
+  it.each([
+    "Recebi uma mensagem em branco.",
+    "Sua última mensagem veio sem texto.",
+    "Notei que a mensagem chegou vazia.",
+  ])("recusa a frase falsa: %s", (candidate) => {
+    expect(claimsCurrentInboundIsEmpty(candidate, inbound)).toBe(true);
+  });
+
+  it("permite uma resposta que trata o pedido real", () => {
+    expect(claimsCurrentInboundIsEmpty("Claro. Qual dia e período você prefere para a consulta?", inbound)).toBe(false);
+  });
+
+  it("não arma quando a mensagem de fato não tem texto", () => {
+    expect(claimsCurrentInboundIsEmpty("Recebi uma mensagem em branco.", "   ")).toBe(false);
+  });
+});
+
+/**
+ * A função pura acima prova que a frase é RECONHECIDA. Não prova que ela é
+ * BARRADA: a detecção só vale se estiver no único caminho que fala no canal.
+ * Apagar o `if` de dentro de `send_message.execute` deixa os seis casos acima
+ * verdes e devolve o produto ao estado em que o cliente recebe a frase falsa.
+ */
+describe("a barreira está no caminho do envio, não numa função de ninguém", () => {
+  const FONTE = readFileSync(
+    join(process.cwd(), "lib/agent-engine/agent/inbound-turn.ts"),
+    "utf8",
+  );
+  const corpoDoSend = (() => {
+    const i = FONTE.indexOf("send_message: tool({");
+    const j = FONTE.indexOf("update_lead_state: tool({", i);
+    expect(i).toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
+    return FONTE.slice(i, j);
+  })();
+
+  it("o veto roda dentro de send_message.execute", () => {
+    expect(corpoDoSend).toMatch(/claimsCurrentInboundIsEmpty\(body, inboundSignal\)/);
+    expect(corpoDoSend).toContain("'false_empty_inbound'");
+  });
+
+  it("ele veta ANTES do teto de envios — recusa de conteúdo não gasta a cota do turno", () => {
+    // A ordem é o que garante "não gasta envio": um veto que rodasse depois do
+    // gate de `seq` já teria consumido a decisão de enviar do turno.
+    //
+    // ⚠️ A checagem de posição vem DEPOIS da de presença, e não é estilo: ao
+    // sabotar o conserto (apagando o `if` inteiro de `send_message.execute`) a
+    // primeira versão deste caso ficou VERDE, porque `indexOf` de algo ausente é
+    // −1 e −1 é menor que qualquer posição. Uma ordem se satisfazia pela
+    // ausência do que devia estar ordenado. Previsto 2 vermelhos, observado 1.
+    const veto = corpoDoSend.indexOf("claimsCurrentInboundIsEmpty");
+    const teto = corpoDoSend.indexOf("max_sends_per_turn");
+    expect(veto).toBeGreaterThan(-1);
+    expect(teto).toBeGreaterThan(-1);
+    expect(veto).toBeLessThan(teto);
   });
 });
