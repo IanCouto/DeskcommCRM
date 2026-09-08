@@ -126,7 +126,12 @@ export interface SendInBubblesOpts<T extends BubbleOutcome = BubbleOutcome> {
    * chamá-lo a cada uma somaria duas esperas na mesma pausa.
    *
    * OPCIONAL — sem ele o comportamento é exatamente o de antes, que é o que
-   * mantém os demais chamadores (`followup-turn`, testes) intactos.
+   * mantém os testes existentes intactos. Chamador de produção há UM só
+   * (`inbound-turn.ts`); o turno de follow-up NÃO passa por aqui — ele fala com
+   * `channel.send` direto (`followup-turn.ts:604`), então a mensagem proativa
+   * segue saindo sem pausa humana. É escopo deliberado: o "rápido demais" que
+   * este gancho conserta é o da RESPOSTA que chega junto com o "✓✓" do cliente,
+   * e um follow-up não responde a nada que ele acabou de mandar.
    */
   antesDaPrimeira?: (primeiraBolha: string) => Promise<void>;
 }
