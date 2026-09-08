@@ -155,13 +155,22 @@ test.describe("Inbox — o balão diz de onde saiu a mensagem", () => {
     if (erroConversa) throw new Error(`conversations: ${erroConversa.message}`);
     conversaId = (conversa as { id: string }).id;
 
-    // As QUATRO linhas, uma por origem ALCANÇÁVEL, com os valores que os
-    // emissores reais gravam:
-    //   inbound          — o cliente escreveu (lib/waha/ingest.ts)
-    //   external_device  — o atendente respondeu pelo CELULAR, fora do CRM
-    //                      (lib/waha/ingest.ts:622,850)
-    //   ai               — o agente respondeu (workers/ai-response-worker.ts:1068)
-    //   user             — alguém digitou no CRM (app/api/v1/messages/_handler.ts:529)
+    // As QUATRO linhas, com os valores que os emissores REAIS gravam — cada um
+    // com o arquivo que o carimba, para ninguém precisar acreditar nesta lista:
+    //
+    //   inbound  + external_device — o CLIENTE escreveu (lib/waha/ingest.ts:622)
+    //   outbound + external_device — o atendente respondeu pelo CELULAR, fora
+    //                                do CRM (lib/waha/ingest.ts:850)
+    //   outbound + ai              — o agente respondeu
+    //                                (workers/ai-response-worker.ts:1068)
+    //   outbound + user            — alguém digitou no CRM
+    //                                (app/api/v1/messages/_handler.ts:529)
+    //
+    // ⚠️ A PRIMEIRA E A SEGUNDA TÊM O MESMO `sent_via`. Isso não é descuido do
+    // fixture: a ingestão carimba `external_device` nos dois sentidos, e quem
+    // separa o cliente do atendente é a DIREÇÃO. Por isso o controle negativo
+    // lá embaixo é forte — se o componente parasse de olhar `direction`, toda
+    // mensagem recebida passaria a dizer "Celular" para o dono.
     //
     // O corpo de cada uma é único e sem acento: ele é a ÂNCORA que amarra o
     // rótulo ao balão certo. Sem isso, `getByText("Celular")` casaria com o
@@ -176,13 +185,21 @@ test.describe("Inbox — o balão diz de onde saiu a mensagem", () => {
     };
     const t0 = Date.now();
     const linhas = [
-      { ...base, direction: "inbound", status: "delivered", body: "PERGUNTA DO CLIENTE", sent_at: new Date(t0).toISOString() },
+      { ...base, direction: "inbound", status: "delivered", sent_via: "external_device", body: "PERGUNTA DO CLIENTE", sent_at: new Date(t0).toISOString() },
       { ...base, direction: "outbound", status: "sent", sent_via: "external_device", body: "RESPOSTA PELO CELULAR", sent_at: new Date(t0 + 1000).toISOString() },
       { ...base, direction: "outbound", status: "sent", sent_via: "ai", body: "RESPOSTA DO AGENTE", sent_at: new Date(t0 + 2000).toISOString() },
       { ...base, direction: "outbound", status: "sent", sent_via: "user", body: "RESPOSTA DIGITADA NO CRM", sent_at: new Date(t0 + 3000).toISOString() },
     ];
-    const { error: erroMsg } = await admin.from("messages").insert(linhas);
-    if (erroMsg) throw new Error(`messages: ${erroMsg.message}`);
+    // Uma a uma, e não em lote: no insert em LOTE o PostgREST une as chaves de
+    // todas as linhas e manda NULL onde a linha não a tem — então uma linha que
+    // omitisse `sent_via` bateria no NOT NULL em vez de cair no DEFAULT da
+    // coluna. Medido aqui: `null value in column "sent_via" ... violates
+    // not-null constraint`. Linha a linha, o fixture grava o que a aplicação
+    // grava.
+    for (const linha of linhas) {
+      const { error: erroMsg } = await admin.from("messages").insert(linha);
+      if (erroMsg) throw new Error(`messages (${linha.body}): ${erroMsg.message}`);
+    }
   });
 
   test.afterAll(async () => {
@@ -206,9 +223,21 @@ test.describe("Inbox — o balão diz de onde saiu a mensagem", () => {
      * O balão que CONTÉM aquele corpo. Subir do texto para o container é o que
      * amarra o rótulo à mensagem certa — a asserção solta `getByText("IA")`
      * ficaria verde com os três rótulos na bolha errada.
+     *
+     * O caminho é `<p>` do corpo → PAI. Em `MessageBubble` o rótulo e o corpo
+     * são IRMÃOS dentro da bolha (`<div class="mb-0.5 …">{t(senderLabel)}</div>`
+     * e `<p class="whitespace-pre-wrap …">{message.body}</p>`), então o pai do
+     * `<p>` é o menor elemento que contém os dois.
+     *
+     * A primeira versão era `locator("div").filter({hasText: /^corpo/})`, e ela
+     * não achava nada: o `^` exige que o texto do div COMECE pelo corpo, e o da
+     * bolha começa pelo rótulo. O sintoma ("element(s) not found") lê como "a
+     * mensagem não renderizou" — e a captura da falha mostrava as quatro
+     * bolhas certas na tela. Locator quebrado e feature quebrada dão o MESMO
+     * vermelho; foi a captura que separou os dois.
      */
     const balaoCom = (corpo: string) =>
-      page.locator("div").filter({ hasText: new RegExp(`^${corpo}`) }).last();
+      page.getByText(corpo, { exact: true }).locator("xpath=..");
 
     const esperado: Array<[string, string]> = [
       ["RESPOSTA PELO CELULAR", "Celular"],
