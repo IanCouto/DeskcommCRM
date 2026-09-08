@@ -8130,6 +8130,17 @@ export const DICIONARIO: Traducoes = {
   "Link do Google Meet:": { es: "Enlace de Google Meet:" },
 
 
+  // ─── app/api/v1/cron/agenda-reminder (o lembrete que sai no WhatsApp) ───
+  //
+  // Não é tela: é mensagem que sai para o telefone de um cliente. Sem estas
+  // entradas, uma instalação em espanhol mandaria a frase em português com a
+  // data em espanhol — a mesma metade-traduzida que o guarda de data proíbe,
+  // só que irreversível, porque a mensagem já saiu. `às` já existia acima.
+  "Oi,": { es: "¡Hola," },
+  "Oi!": { es: "¡Hola!" },
+  "Passando pra lembrar do seu compromisso:": { es: "Te recuerdo tu cita:" },
+  "Endereço": { es: "Dirección" },
+
   // ─── lib/ai/pontos/resolver.ts (avisos do painel de Provedores de IA) ───
   "Este ponto usa o modelo definido na versão publicada do agente; a escolha do painel não se aplica.": {
     es: "Este punto usa el modelo definido en la versión publicada del agente; la elección del panel no se aplica.",

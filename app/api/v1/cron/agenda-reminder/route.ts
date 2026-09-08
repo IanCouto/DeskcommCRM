@@ -68,6 +68,9 @@ import { ensureConversation } from "@/lib/automation/start-conversation";
 import { adiarAteAJanelaAbrir } from "@/lib/automation/janela-do-canal";
 import { espacarEnvio } from "@/lib/automation/throttle";
 import { env } from "@/lib/env";
+import { tagDeIdioma } from "@/lib/i18n/datas";
+import { traduzir } from "@/lib/i18n/dicionario";
+import { IDIOMA_PADRAO, normalizarIdioma, type Idioma } from "@/lib/i18n/idiomas";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -118,23 +121,52 @@ export function montarLembrete(input: {
   quando: Date;
   timezone: string;
   local: string | null;
+  /**
+   * O idioma da ORGANIZAÇÃO (`organizations.locale`), e não um literal.
+   *
+   * `tests/unit/i18n-a-data-segue-o-idioma.test.ts` proíbe `"pt-BR"` escrito à
+   * mão em formatação de data fora de `lib/i18n/datas.ts` — e o motivo não é
+   * estética: uma instalação em espanhol receberia o lembrete com "jueves, 03/09"
+   * no meio de uma frase em português, que é a tela meio traduzida que aquele
+   * guarda existe para impedir. Aqui vale em dobro, porque isto não é tela: é
+   * mensagem que sai para o WhatsApp de um cliente e não dá para desfazer.
+   *
+   * Opcional com o padrão do produto para a função seguir pura e testável sem
+   * banco — o mesmo desenho de `montarPares` em `lib/metrics/atrito.ts`.
+   */
+  idioma?: Idioma;
 }): string {
-  const dia = new Intl.DateTimeFormat("pt-BR", {
+  const idioma = input.idioma ?? IDIOMA_PADRAO;
+  const t = (texto: string) => traduzir(texto, idioma);
+  const etiqueta = tagDeIdioma(idioma);
+
+  const dia = new Intl.DateTimeFormat(etiqueta, {
     timeZone: input.timezone,
     weekday: "long",
     day: "2-digit",
     month: "2-digit",
   }).format(input.quando);
-  const hora = new Intl.DateTimeFormat("pt-BR", {
+  const hora = new Intl.DateTimeFormat(etiqueta, {
     timeZone: input.timezone,
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
   }).format(input.quando);
 
-  const saudacao = input.nomeDoContato ? `Oi, ${input.nomeDoContato}!` : "Oi!";
-  const onde = input.local ? ` Endereço: ${input.local}.` : "";
-  return `${saudacao} Passando pra lembrar do seu compromisso: ${input.titulo}, ${dia} às ${hora}.${onde}`;
+  // Cada `t()` cobre só a parte FIXA da frase: nome, título, data e endereço
+  // são dado do tenant e nunca passam por tradução.
+  // A pontuação entra na CHAVE de propósito: em espanhol a exclamação abre a
+  // frase ("¡Hola"), e um `t("Oi")` solto com o `!` colado do lado de fora
+  // devolveria "Hola, Rose!" — meio traduzido, que é o defeito que o guarda de
+  // i18n existe para impedir.
+  const saudacao = input.nomeDoContato
+    ? `${t("Oi,")} ${input.nomeDoContato}!`
+    : t("Oi!");
+  const onde = input.local ? ` ${t("Endereço")}: ${input.local}.` : "";
+  return (
+    `${saudacao} ${t("Passando pra lembrar do seu compromisso:")} ` +
+    `${input.titulo}, ${dia} ${t("às")} ${hora}.${onde}`
+  );
 }
 
 /**
@@ -248,7 +280,7 @@ async function handle(req: NextRequest): Promise<Response> {
 
     const { data: organizacao } = await admin
       .from("organizations")
-      .select("timezone")
+      .select("timezone, locale")
       .eq("id", org)
       .maybeSingle();
 
@@ -258,6 +290,7 @@ async function handle(req: NextRequest): Promise<Response> {
       quando: new Date(linha.starts_at),
       timezone: organizacao?.timezone ?? "America/Sao_Paulo",
       local: linha.location_details ?? tipo.location_details ?? null,
+      idioma: normalizarIdioma(organizacao?.locale),
     });
 
     if (tipo.reminder_template_name) {
