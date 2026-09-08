@@ -437,6 +437,7 @@ IMG_NS="ghcr.io/melgarafael"
 IMG_APP="${IMG_NS}/deskcommcrm"
 IMG_WORKER="${IMG_NS}/deskcomm-worker"
 IMG_SCHEDULER="${IMG_NS}/deskcomm-scheduler"
+IMG_WACALLS="${IMG_NS}/deskcomm-wacalls"
 
 # A última versão publicada (ex.: "1.2.1"), ou vazio se não deu para saber.
 #
@@ -574,7 +575,7 @@ completar_pin_ausente() {  # completar_pin_ausente [envfile]
   # e o `.env` original chega intacto do outro lado, com as customizações.
   [ -w "$envfile" ] || return 0
 
-  for par in "WORKER_IMAGE:worker:deskcomm-worker" "SCHEDULER_IMAGE:scheduler:deskcomm-scheduler"; do
+  for par in "WORKER_IMAGE:worker:deskcomm-worker" "SCHEDULER_IMAGE:scheduler:deskcomm-scheduler" "WACALLS_IMAGE:wacalls:deskcomm-wacalls"; do
     chave="${par%%:*}"; svc="$(printf '%s' "$par" | cut -d: -f2)"; repo="${par##*:}"
 
     # LACUNA apenas. Valor explícito (mesmo em canal móvel) é intocável.
@@ -593,10 +594,10 @@ completar_pin_ausente() {  # completar_pin_ausente [envfile]
   printf '%s' "${corrigidos# }"
 }
 
-# Escreve no .env as três imagens da MESMA versão + o pull_policy que combina
+# Escreve no .env as quatro imagens da MESMA versão + o pull_policy que combina
 # com a mutabilidade da tag.
 #
-# As três juntas porque elas sobem juntas: app numa versão e worker em `latest`
+# As quatro juntas porque elas sobem juntas: app numa versão e worker em `latest`
 # é a matriz de compatibilidade que ninguém testou. E o pull_policy não é
 # detalhe — foi medido que, com `always` e o registry sem responder para aquela
 # referência, o `up -d` FALHA e o contêiner não sobe, mesmo com a imagem já no
@@ -617,6 +618,8 @@ gravar_imagens() {
   set_env_var "$envfile" WORKER_PULL_POLICY    "$politica"
   set_env_var "$envfile" SCHEDULER_IMAGE       "${IMG_SCHEDULER}:${versao}"
   set_env_var "$envfile" SCHEDULER_PULL_POLICY "$politica"
+  set_env_var "$envfile" WACALLS_IMAGE         "${IMG_WACALLS}:${versao}"
+  set_env_var "$envfile" WACALLS_PULL_POLICY   "$politica"
 }
 
 # Grava (ou reescreve) uma chave no .env — sem duplicar linha se ela já existe.

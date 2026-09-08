@@ -151,6 +151,11 @@ const schema = z.object({
   // assine — aí a verificação passa a ser obrigatória.
   WAHA_WEBHOOK_REQUIRE_SIGNATURE: z.string().optional().default("false"),
 
+  // WaCalls — chamada de voz WhatsApp, opt-in por organização (spec 18).
+  // Nunca `required()`: instalação sem a feature ligada não tem `wacalls` no
+  // compose, e exigir aqui derrubaria o boot de todo self-host que não a usa.
+  WACALLS_API_BASE_URL: z.string().optional().default(""),
+
   // Upstash Redis
   UPSTASH_REDIS_REST_URL: required("UPSTASH_REDIS_REST_URL"),
   UPSTASH_REDIS_REST_TOKEN: required("UPSTASH_REDIS_REST_TOKEN"),

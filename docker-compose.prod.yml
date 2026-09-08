@@ -36,6 +36,10 @@ services:
     pull_policy: ${APP_PULL_POLICY:-always}
     restart: unless-stopped
     env_file: .env
+    environment:
+      # A rota /api/v1/voice/* fala com o wacalls interno (spec 18) — sempre
+      # presente no compose, mesmo em instalação que não ativou a feature.
+      WACALLS_API_BASE_URL: http://wacalls:8080
     depends_on:
       srh:
         condition: service_started
@@ -99,6 +103,9 @@ services:
     environment:
       # dentro da rede do compose, o WAHA é o serviço 'waha' na porta interna 3000
       WAHA_API_BASE_URL: http://waha:3000
+      # idem pro wacalls — sempre presente no compose (spec 18), mesmo em
+      # instalação que não ativou a feature (o serviço sobe, ninguém pareia).
+      WACALLS_API_BASE_URL: http://wacalls:8080
     networks:
       - internal
     healthcheck:
@@ -224,6 +231,22 @@ services:
     logging: *default-logging
     networks: [internal]
 
+  # Chamada de voz WhatsApp — spec docs/specs/18-spec-voice-calls-wacalls.md.
+  # Sessão SEPARADA da WAHA (opt-in por organização, risco de segundo linked
+  # device aceito na decisão de produto §1.2 da spec). API sem autenticação
+  # própria (upstream): fica só na rede interna, alcançável só pelo app/worker
+  # — nunca publicada pelo Caddy. Mídia WebRTC em produção é ponto em aberto
+  # (spec §3.3), não resolvido nesta versão.
+  wacalls:
+    mem_limit: 256m   # placeholder — medir em staging antes de fixar
+    image: ${WACALLS_IMAGE:-ghcr.io/melgarafael/deskcomm-wacalls:stable}
+    pull_policy: ${WACALLS_PULL_POLICY:-always}
+    restart: unless-stopped
+    volumes:
+      - wacalls-data:/data
+    logging: *default-logging
+    networks: [internal]
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -246,6 +269,7 @@ services:
 volumes:
   waha-data:
   waha-media:
+  wacalls-data:
   caddy-data:
   caddy-config:
 

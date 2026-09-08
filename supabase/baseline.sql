@@ -9373,12 +9373,21 @@ alter table public.channel_sessions alter column waha_session_name drop not null
 alter table public.channel_sessions
   add column if not exists zernio_account_id text;
 
+-- wacalls (migration 0206, chamada de voz) — colunas do quarto provider,
+-- precisam existir antes das constraints abaixo referenciá-las.
+alter table public.channel_sessions
+  add column if not exists wacalls_session_id text,
+  add column if not exists wacalls_jid text,
+  add column if not exists wacalls_paired_at timestamptz;
+
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_check;
 
 alter table public.channel_sessions
   add constraint channel_sessions_provider_check
-  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text]));
+  -- 'wacalls' (migration 0206, chamada de voz) somado aqui — UM bloco só por
+  -- constraint, doutrina de baseline (não duplicar drop+add por migration).
+  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'wacalls'::text]));
 
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_ref_check;
@@ -9387,7 +9396,8 @@ alter table public.channel_sessions
   add constraint channel_sessions_provider_ref_check check (
     (provider = 'waha'       and waha_session_name    is not null) or
     (provider = 'meta_cloud' and meta_phone_number_id is not null) or
-    (provider = 'zernio'     and zernio_account_id    is not null)
+    (provider = 'zernio'     and zernio_account_id    is not null) or
+    (provider = 'wacalls'    and wacalls_session_id    is not null)
   );
 
 comment on column public.channel_sessions.zernio_account_id is
@@ -10094,6 +10104,11 @@ alter table public.agent_inbox_items
     -- tratava `skipped` como sucesso, e a linha da fonte seguia dizendo `ready`.
     -- Irmão direto de `midia_nao_lida`: mesma chave, mesmo silêncio.
     'conhecimento_nao_indexado',
+    -- (migration 0206, spec 18) Chamada de voz WhatsApp (WaCalls) recebida que
+    -- nunca teve answered_at — o "chamou e ninguém atendeu" precisa de dono,
+    -- mesma razão de midia_nao_lida/conhecimento_nao_indexado. Entra NESTA
+    -- lista, não em bloco novo (#159, bloco único por constraint).
+    'voice_call_missed',
     'other'
   ));
 
@@ -17333,3 +17348,77 @@ create unique index if not exists ai_kbv_version_por_fonte
 create unique index if not exists ai_kbv_version_por_agente_legado
   on public.ai_knowledge_versions (agent_id, version_number)
   where knowledge_source_id is null;
+
+-- ---- chamada de voz WaCalls — voice_calls (migration 0206) ----
+--
+-- Spec docs/specs/18-spec-voice-calls-wacalls.md. As colunas wacalls_* e as
+-- constraints channel_sessions_provider_check/_ref_check já foram estendidas
+-- no bloco ÚNICO delas, lá em cima (doutrina "uma constraint, um bloco" —
+-- tests/unit/baseline-constraint-reconstruida.test.ts). Aqui só a tabela nova.
+create table if not exists public.voice_calls (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  channel_session_id uuid not null references public.channel_sessions(id) on delete cascade,
+  contact_id uuid references public.contacts(id) on delete set null,
+  wacalls_call_id text not null,
+  direction text not null check (direction in ('inbound', 'outbound')),
+  peer_phone text not null,
+  -- Vocabulário do UPSTREAM (cmd/server/broker.go CallStatus), passthrough
+  -- literal. "Chamada perdida" não é status próprio lá: é end_reason numa
+  -- chamada sem answered_at.
+  status text not null check (status in ('starting', 'ringing', 'connected', 'ended')),
+  -- Vocabulário do UPSTREAM (EndCallReason), sem CHECK de propósito — pode
+  -- ganhar valor novo numa versão futura do WaCalls (doutrina DIRC, mesma
+  -- exceção de crm_lead_activities.type). Conhecidos hoje: user_ended,
+  -- declined, timeout, busy, cancelled, failed, do_not_disturb, unknown.
+  end_reason text,
+  started_at timestamptz not null default now(),
+  answered_at timestamptz,
+  ended_at timestamptz,
+  duration_ms integer,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (organization_id, wacalls_call_id)
+);
+
+alter table public.voice_calls add column if not exists end_reason text;
+alter table public.voice_calls drop constraint if exists voice_calls_status_check;
+alter table public.voice_calls
+  add constraint voice_calls_status_check
+  check (status in ('starting', 'ringing', 'connected', 'ended'));
+
+create index if not exists idx_voice_calls_org on public.voice_calls(organization_id);
+create index if not exists idx_voice_calls_contact on public.voice_calls(contact_id);
+create index if not exists idx_voice_calls_channel_session on public.voice_calls(channel_session_id);
+
+alter table public.voice_calls enable row level security;
+
+drop policy if exists tenant_isolation_voice_calls_all on public.voice_calls;
+create policy tenant_isolation_voice_calls_all on public.voice_calls
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));
+
+drop trigger if exists trg_voice_calls_set_updated_at on public.voice_calls;
+create trigger trg_voice_calls_set_updated_at
+  before update on public.voice_calls
+  for each row execute function public.fn_set_updated_at();
+
+-- Realtime (forward-fix da migration 0207): sem isto o frontend nunca recebe
+-- o INSERT/UPDATE que o worker grava em call-status/call-ended — achado
+-- testando ao vivo, ligação real tocou e a tela ficou muda.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime'
+       and schemaname = 'public'
+       and tablename = 'voice_calls'
+  ) then
+    execute 'alter publication supabase_realtime add table public.voice_calls';
+  end if;
+end $$;
+
+-- agent_inbox_items_kind_check já foi estendida com 'voice_call_missed' no
+-- bloco ÚNICO dela (mais acima, perto do resto do catálogo de kinds) — mesma
+-- doutrina, não duplicar aqui.

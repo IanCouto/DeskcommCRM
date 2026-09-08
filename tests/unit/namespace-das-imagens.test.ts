@@ -78,9 +78,9 @@ function imgNs(): string {
   return m[1];
 }
 
-/** Os três repositórios de imagem, na ordem em que `_common.sh` os declara. */
+/** Os quatro repositórios de imagem, na ordem em que `_common.sh` os declara. */
 function reposDoKit(): string[] {
-  return ["IMG_APP", "IMG_WORKER", "IMG_SCHEDULER"].map((chave) => {
+  return ["IMG_APP", "IMG_WORKER", "IMG_SCHEDULER", "IMG_WACALLS"].map((chave) => {
     const m = COMUM.match(new RegExp(`^${chave}="\\$\\{IMG_NS\\}/([^"]+)"$`, "m"));
     if (!m?.[1]) {
       throw new Error(
@@ -120,7 +120,7 @@ describe("o default do compose diz o mesmo que o kit", () => {
   // A leitura acontece DENTRO de cada `it`, não no corpo do describe: lá, um
   // `_common.sh` fora de forma derrubava a coleta do arquivo inteiro, e o que
   // chegava ao resumo era "no tests" em vez do caso que reprovou.
-  const CHAVES = ["APP_IMAGE", "WORKER_IMAGE", "SCHEDULER_IMAGE"] as const;
+  const CHAVES = ["APP_IMAGE", "WORKER_IMAGE", "SCHEDULER_IMAGE", "WACALLS_IMAGE"] as const;
 
   CHAVES.forEach((chave, i) => {
     it(`o default de ${chave} usa o namespace de IMG_NS`, () => {
@@ -157,9 +157,9 @@ describe("o kit aponta para o que o CI realmente publica", () => {
     );
   });
 
-  it("as três imagens do kit são exatamente as três que o workflow constrói", () => {
+  it("as quatro imagens do kit são exatamente as quatro que o workflow constrói", () => {
     const naMatriz = [...PUBLICA.matchAll(/^\s{10}- name: (\S+)$/gm)].map((m) => m[1]);
-    expect(naMatriz.length, "a matriz de publish-image.yml não tem mais três imagens").toBe(3);
+    expect(naMatriz.length, "a matriz de publish-image.yml não tem mais quatro imagens").toBe(4);
     expect([...naMatriz].sort()).toEqual([...reposDoKit()].sort());
   });
 });

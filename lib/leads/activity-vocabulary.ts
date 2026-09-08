@@ -100,7 +100,15 @@ export type ActivityType =
   | "conversation_claimed"
   | "conversation_transferred"
   | "conversation_released"
-  | "conversation_ai_paused";
+  | "conversation_ai_paused"
+  /**
+   * Chamada de voz WhatsApp (WaCalls, spec 18) encerrada — gravada na timeline
+   * junto com mensagens/notas. Emitida pela ponte de eventos do worker
+   * (`lib/wacalls/events-bridge.ts`) ao receber `call-ended`, via
+   * `emitAgentActivityForContact` (mesmo roteador contato→lead que o resto do
+   * sistema usa, `sourceModule: 'voice_calls'`).
+   */
+  | "voice_call";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   lead_created: "Entrou pelo WhatsApp",
@@ -190,6 +198,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // arquivos e o controle NEGATIVO de `handoff-por-orcamento.test.ts` usa
   // literalmente "Voltar para a IA" como a sabotagem que deve reprovar.
   conversation_ai_paused: "Pausou o automático",
+  voice_call: "Chamada de voz",
 };
 
 /** Quando o tipo é legado/desconhecido, a linha ainda é honesta — sem jargão. */

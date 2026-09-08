@@ -22,6 +22,7 @@ import {
 import { ConexaoCaidaBanner } from "@/components/app/ConexaoCaidaBanner";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
 import { listarConexoesCaidas, type ConexaoCaida } from "@/lib/channels/health";
+import { VoiceCallProvider } from "@/components/voice/VoiceCallContext";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await loadAuthUser();
@@ -154,7 +155,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     user.id,
     activeOrg?.orgId,
   );
-  const shell = <AppShell sidebarCollapsed={collapsed}>{children}</AppShell>;
+  const shell = (
+    <VoiceCallProvider>
+      <AppShell sidebarCollapsed={collapsed}>{children}</AppShell>
+    </VoiceCallProvider>
+  );
 
   return (
     // O idioma envolve a árvore inteira e recebe o código PRONTO — ele não

@@ -6328,6 +6328,48 @@ export const DICIONARIO: Traducoes = {
   "Salvar produto": { es: "Guardar producto" },
   "em estoque": { es: "en stock" },
   "sem controle de estoque": { es: "sin control de stock" },
+
+  // Chamada de voz WhatsApp (WaCalls, spec 18)
+  // "Chamar", não "Ligar" — a chave já existe com outro sentido (ativar/toggle,
+  // linha ~3725: "Ligar" -> "Activar"). Mesma palavra em PT, contextos
+  // diferentes; o dicionário é chaveado pelo texto, não por significado, então
+  // a colisão vira TS1117 (chave duplicada) se as duas usarem a mesma string.
+  "Chamar": { es: "Llamar" },
+  "Em ligação": { es: "En llamada" },
+  "Chamada de voz recebida": { es: "Llamada de voz recibida" },
+  "Recusar chamada": { es: "Rechazar llamada" },
+  "Atender chamada": { es: "Atender llamada" },
+  "Chamando…": { es: "Llamando…" },
+  // "Conectando…" já existe (linha ~3708, saúde do canal) com a MESMA
+  // tradução — reaproveitado, não duplicado aqui.
+  "Chamada em andamento": { es: "Llamada en curso" },
+  "Reativar microfone": { es: "Reactivar micrófono" },
+  "Silenciar microfone": { es: "Silenciar micrófono" },
+  "Encerrar chamada": { es: "Finalizar llamada" },
+  "Chamada de voz": { es: "Llamada de voz" },
+  "A chamada de voz não está configurada.": { es: "La llamada de voz no está configurada." },
+  "Falta o endereço do serviço (": { es: "Falta la dirección del servicio (" },
+  ") nas variáveis de ambiente desta instalação.": {
+    es: ") en las variables de entorno de esta instalación.",
+  },
+  "Chamada de voz por WhatsApp": { es: "Llamada de voz por WhatsApp" },
+  "Um segundo aparelho vinculado ao mesmo número já conectado, só para ligar e atender chamadas. Escaneie uma vez para ativar.":
+    {
+      es: "Un segundo dispositivo vinculado al mismo número ya conectado, solo para llamar y atender llamadas. Escanee una vez para activar.",
+    },
+  "Não pareado": { es: "No emparejado" },
+  "Aparelho pareado": { es: "Dispositivo emparejado" },
+  "QR Code para parear chamada de voz": { es: "Código QR para emparejar llamada de voz" },
+  "Parear chamada de voz": { es: "Emparejar llamada de voz" },
+  "Risco aceito: um segundo aparelho vinculado ao mesmo número pode ser sinalizado pelo WhatsApp.":
+    {
+      es: "Riesgo aceptado: un segundo dispositivo vinculado al mismo número puede ser señalado por WhatsApp.",
+    },
+  "Pronto para ligar — o botão de chamar aparece nos contatos com telefone.": {
+    es: "Listo para llamar — el botón de llamar aparece en los contactos con teléfono.",
+  },
+  "Chamada de voz pareada!": { es: "¡Llamada de voz emparejada!" },
+  "Não foi possível iniciar o pareamento.": { es: "No fue posible iniciar el emparejamiento." },
 };
 
 /**

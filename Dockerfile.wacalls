@@ -1,0 +1,57 @@
+# syntax=docker/dockerfile:1
+# Chamada de voz WhatsApp — spec docs/specs/18-spec-voice-calls-wacalls.md.
+#
+# WaCalls (https://github.com/JotaDev66/WaCalls, MIT) é dependência de terceiro
+# vendorizada por commit fixo, não republicada — mesmo princípio do WAHA/Redis/
+# Caddy na doutrina de packaging (docs/doctrine/packaging.md invariante 4):
+# nunca uma tag móvel, sempre um ponto fixo, e o build acontece no CI, nunca
+# na máquina do cliente.
+ARG WACALLS_COMMIT=edeb31f0427aba896639db503153b777a405eccf
+
+# ---- client: build do React (Vite) ----
+FROM node:22-alpine AS client
+ARG WACALLS_COMMIT
+WORKDIR /src
+RUN apk add --no-cache git
+RUN git clone https://github.com/JotaDev66/WaCalls.git . \
+    && git checkout "$WACALLS_COMMIT"
+WORKDIR /src/client
+RUN npm install
+RUN npm run build
+
+# ---- server: build do binário Go (estático, sem cgo) ----
+FROM golang:1.26-alpine AS server
+ARG WACALLS_COMMIT
+WORKDIR /src
+RUN apk add --no-cache git
+RUN git clone https://github.com/JotaDev66/WaCalls.git . \
+    && git checkout "$WACALLS_COMMIT"
+RUN go mod download
+# CGO_ENABLED=0: o README garante MLow puro-Go, sem cgo nem DLL nativa — o
+# binário sai realmente estático, compatível com o runner alpine sem libc extra.
+RUN CGO_ENABLED=0 go build -o /out/wacalls-server ./cmd/server
+
+# ---- runner: imagem slim de produção ----
+FROM alpine:3.20 AS runner
+WORKDIR /app
+
+LABEL org.opencontainers.image.source="https://github.com/melgarafael/DeskcommCRM" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.title="DeskcommCRM wacalls" \
+      org.opencontainers.image.description="Vendorizado de github.com/JotaDev66/WaCalls (MIT), commit fixo"
+
+RUN apk add --no-cache ca-certificates \
+    && addgroup -g 1001 -S wacalls && adduser -S wacalls -u 1001
+
+COPY --from=server /out/wacalls-server /app/wacalls-server
+COPY --from=client /src/client/dist /app/client/dist
+
+# /data guarda wacalls.db (credencial de sessão WhatsApp — volume nomeado no
+# compose, mesmo padrão de waha-data). Dono do usuário não-root desde já,
+# senão o primeiro write falha por permissão quando o volume monta como root.
+RUN mkdir -p /data && chown -R wacalls:wacalls /data /app
+USER wacalls
+
+EXPOSE 8080
+ENTRYPOINT ["/app/wacalls-server"]
+CMD ["-addr", ":8080", "-db", "/data/wacalls.db", "-static", "/app/client/dist"]
