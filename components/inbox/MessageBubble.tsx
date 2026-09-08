@@ -57,9 +57,18 @@ export function MessageBubble({ message, debugCitations, onResponder, citada }: 
   const citations = extractCitations(message.metadata);
   const showCitationButton =
     isOutbound && aiGenerated && (debugCitations ?? false);
+  // De quem saiu esta linha. `external_device` é a resposta pelo CELULAR — o
+  // operador atendeu pelo WhatsApp do telefone, fora do CRM, e o ingest carimba
+  // aqui. Antes isto voltava null para tudo que não fosse IA, e a bolha ficava
+  // sem nome: o dono lia a conversa como se tudo tivesse sido digitado no CRM.
+  // Os rótulos passam por t() no render (ver dicionario.ts para o espanhol).
   const senderLabel = (() => {
     if (!isOutbound) return null;
     if (message.sent_via === "ai") return "IA";
+    if (message.sent_via === "external_device") return "Celular";
+    if (message.sent_via === "automation") return "Automação";
+    if (message.sent_via === "user") return "Você";
+    if (message.sent_via === "crm") return "Você";
     return null;
   })();
 
