@@ -16,7 +16,7 @@ import { useT } from "@/hooks/i18n/useT";
  *
  * ─── Por que o QR chega por SSE e não por polling de imagem ─────────────────
  * O canal por QR (`ConnectionsClient`) recarrega uma tag `<img>` a cada 15s
- * porque o WAHA serve o QR do momento em uma rota própria. O WaCalls não tem
+ * porque o transporte de mensagens serve o QR do momento em uma rota própria. O WaCalls não tem
  * essa rota: ele EMPURRA o QR pela stream de eventos, uma vez, quando muda.
  * Por isso esta tela abre um `EventSource` só durante o pareamento — nunca em
  * repouso — e fecha assim que "pareado" chega ou o operador sai da tela.

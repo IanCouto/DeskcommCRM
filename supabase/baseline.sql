@@ -9379,7 +9379,7 @@ alter table public.channel_sessions alter column waha_session_name drop not null
 alter table public.channel_sessions
   add column if not exists zernio_account_id text;
 
--- wacalls (migration 0206, chamada de voz) — colunas do quarto provider,
+-- wacalls (migration 0232, chamada de voz) — colunas do quarto provider,
 -- precisam existir antes das constraints abaixo referenciá-las.
 alter table public.channel_sessions
   add column if not exists wacalls_session_id text,
@@ -9391,7 +9391,7 @@ alter table public.channel_sessions
 
 alter table public.channel_sessions
   add constraint channel_sessions_provider_check
-  -- 'wacalls' (migration 0206, chamada de voz) somado aqui — UM bloco só por
+  -- 'wacalls' (migration 0232, chamada de voz) somado aqui — UM bloco só por
   -- constraint, doutrina de baseline (não duplicar drop+add por migration).
   check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'wacalls'::text]));
 
@@ -23295,7 +23295,7 @@ grant execute on function public.fn_encrypt_oauth(text) to service_role;
 grant execute on function public.fn_lgpd_cascade_redact_contact(uuid, uuid, uuid) to service_role;
 grant execute on function public.fn_update_budget_consumption() to service_role;
 
--- ---- chamada de voz WaCalls — voice_calls (migration 0206) ----
+-- ---- chamada de voz WaCalls — voice_calls (migration 0232) ----
 --
 -- Spec docs/specs/18-spec-voice-calls-wacalls.md. As colunas wacalls_* e as
 -- constraints channel_sessions_provider_check/_ref_check já foram estendidas
@@ -23350,7 +23350,7 @@ create trigger trg_voice_calls_set_updated_at
   before update on public.voice_calls
   for each row execute function public.fn_set_updated_at();
 
--- Realtime (forward-fix da migration 0207): sem isto o frontend nunca recebe
+-- Realtime (forward-fix da migration 0233): sem isto o frontend nunca recebe
 -- o INSERT/UPDATE que o worker grava em call-status/call-ended — achado
 -- testando ao vivo, ligação real tocou e a tela ficou muda.
 do $$

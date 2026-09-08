@@ -95,11 +95,30 @@ alter table public.agent_inbox_items
 alter table public.agent_inbox_items
   add constraint agent_inbox_items_kind_check
   check (kind in (
-    'qr_rescan', 'job_dead', 'event_dead', 'budget_exceeded', 'handoff',
-    'promotion_review', 'judge_unaligned', 'followup_dead', 'snooze_expired',
-    'next_action_ambiguous', 'risk_backlog_seeded', 'reactivation_expired',
-    'capabilities_missing', 'message_send_stuck', 'midia_nao_lida',
-    'channel_template_review', 'channel_number_alert', 'promise_unfulfilled',
-    'contact_proposal_expired', 'budget_warning', 'conhecimento_nao_indexado',
-    'voice_call_missed', 'other'
+    'appointment_outcome_required',
+    'appointment_recovery_review',
+    'qr_rescan',
+    'routing_unassigned',
+    'job_dead',
+    'event_dead',
+    'budget_exceeded',
+    'handoff',
+    'promotion_review',
+    'judge_unaligned',
+    'followup_dead',
+    'snooze_expired',
+    'next_action_ambiguous',
+    'risk_backlog_seeded',
+    'reactivation_expired',
+    'capabilities_missing',
+    'message_send_stuck',
+    'midia_nao_lida',
+    'channel_template_review',
+    'channel_number_alert',
+    'promise_unfulfilled',
+    'contact_proposal_expired',
+    'budget_warning',
+    'conhecimento_nao_indexado',
+    'voice_call_missed',
+    'other'
   ));

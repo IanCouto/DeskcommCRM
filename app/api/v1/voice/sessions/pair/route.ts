@@ -2,7 +2,7 @@
  * POST /api/v1/voice/sessions/pair — inicia (ou reinicia) o pareamento de
  * chamada de voz WhatsApp da organização.
  *
- * Segundo dispositivo vinculado no MESMO número WhatsApp da sessão WAHA já
+ * Segundo dispositivo vinculado no MESMO número WhatsApp da sessão de mensagens já
  * pareada — risco aceito, opt-in por org, decisão de produto §1.2 da spec
  * docs/specs/18-spec-voice-calls-wacalls.md. Admin only, igual a
  * channel-sessions/[id]/reconnect.
@@ -74,7 +74,7 @@ export async function POST(): Promise<Response> {
         // path_token cai no DEFAULT do banco, secret é 1 byte zero (bytea).
         //
         // `engine` NÃO entra: `channel_sessions_engine_check` só aceita
-        // NOWEB/WEBJS (vocabulário do WAHA) — omitido, cai no DEFAULT
+        // NOWEB/WEBJS (vocabulário do transporte principal) — omitido, cai no DEFAULT
         // 'NOWEB' da coluna, que não significa nada pra este provider mas
         // satisfaz o CHECK. Mesmo padrão do canal oficial/parceiro, que
         // também não grava `engine`.
