@@ -457,6 +457,14 @@ export const AUDIT_ACTIONS = [
   "crm_task.updated",
   "crm_task.deleted",
   "organization.switched",
+
+  // Chamada de voz WhatsApp (spec 18, migration 0234). Ligá-la vincula um
+  // SEGUNDO aparelho ao número que já atende, por um caminho que não é o
+  // oficial — o risco é a conta ser bloqueada. Estas duas linhas são a resposta
+  // a "quem autorizou isso" e a "quando isso foi desfeito"; sem elas, depois de
+  // um bloqueio não há como saber nem uma coisa nem outra.
+  "voice.opt_in_changed",
+  "voice.session_unpaired",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

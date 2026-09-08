@@ -4063,6 +4063,68 @@ export const DICIONARIO: Traducoes = {
   "Regenerar códigos de recuperação": { es: "Regenerar códigos de recuperación" },
   "Habilite MFA antes de gerar códigos.": { es: "Habilita MFA antes de generar códigos." },
   "Sessões ativas": { es: "Sesiones activas" },
+
+  // ── Chamada de voz pelo WhatsApp (spec 18) ──────────────────────────────
+  // O aviso de risco é a peça mais importante desta tela, e traduzi-lo pela
+  // metade seria pior que não traduzir: quem lê espanhol veria o botão em
+  // espanhol e o RISCO em português — a parte que precisa ser entendida.
+  "Chamada de voz pelo WhatsApp": { es: "Llamadas de voz por WhatsApp" },
+  "Ligada. Sua equipe pode ligar e receber chamadas pelo número conectado.": {
+    es: "Activada. Tu equipo puede llamar y recibir llamadas por el número conectado.",
+  },
+  "Desligada. Ninguém consegue ligar nem receber chamadas por aqui.": {
+    es: "Desactivada. Nadie puede llamar ni recibir llamadas por aquí.",
+  },
+  "Leia antes de ligar": { es: "Lee antes de activar" },
+  "Para fazer chamadas, o sistema precisa conectar um segundo aparelho ao mesmo número de WhatsApp que você já usa para atender. Essa conexão não é feita pelo caminho oficial do WhatsApp.":
+    {
+      es: "Para hacer llamadas, el sistema necesita conectar un segundo dispositivo al mismo número de WhatsApp que ya usas para atender. Esa conexión no se hace por la vía oficial de WhatsApp.",
+    },
+  "O WhatsApp pode entender isso como uso indevido e bloquear a CONTA — não só a chamada. Se isso acontecer, você perde também as mensagens desse número, e recuperar depende do WhatsApp, não de nós.":
+    {
+      es: "WhatsApp puede considerarlo un uso indebido y bloquear la CUENTA, no solo la llamada. Si eso ocurre, también pierdes los mensajes de ese número, y recuperarlo depende de WhatsApp, no de nosotros.",
+    },
+  "Ligue apenas se a chamada de voz valer esse risco para o seu negócio. Você pode desligar a qualquer momento aqui mesmo — e o aparelho é desconectado na hora.":
+    {
+      es: "Actívala solo si las llamadas de voz valen ese riesgo para tu negocio. Puedes desactivarla en cualquier momento aquí mismo, y el dispositivo se desconecta al instante.",
+    },
+  "Este servidor não tem a chamada de voz instalada. Quem cuida da instalação precisa ligá-la antes — depois esta opção fica disponível aqui.":
+    {
+      es: "Este servidor no tiene las llamadas de voz instaladas. Quien administra la instalación debe activarlas antes; después esta opción aparece aquí.",
+    },
+  "Só quem é administrador desta empresa pode mudar isto.": {
+    es: "Solo quien es administrador de esta empresa puede cambiar esto.",
+  },
+  "Risco aceito em": { es: "Riesgo aceptado el" },
+  "Desligar e desconectar o aparelho": { es: "Desactivar y desconectar el dispositivo" },
+  "Desligando…": { es: "Desactivando…" },
+  "Eu li o aviso acima e aceito o risco de o WhatsApp bloquear esta conta.": {
+    es: "He leído el aviso anterior y acepto el riesgo de que WhatsApp bloquee esta cuenta.",
+  },
+  "Ligar chamada de voz": { es: "Activar llamadas de voz" },
+  "Ligando…": { es: "Activando…" },
+  "Chamada de voz ligada.": { es: "Llamadas de voz activadas." },
+  "Chamada de voz desligada e aparelho desconectado.": {
+    es: "Llamadas de voz desactivadas y dispositivo desconectado.",
+  },
+  "Não foi possível salvar.": { es: "No se pudo guardar." },
+  // Mensagens que as rotas de voz devolvem traduzidas (`traduzir(..., idioma)`).
+  "corpo inválido": { es: "cuerpo inválido" },
+  "Para ligar a chamada de voz é preciso aceitar o risco de vincular um segundo aparelho ao seu número.":
+    {
+      es: "Para activar las llamadas de voz hay que aceptar el riesgo de vincular un segundo dispositivo a tu número.",
+    },
+  "A chamada de voz não está disponível neste servidor. Quem administra a instalação precisa ligá-la antes.":
+    {
+      es: "Las llamadas de voz no están disponibles en este servidor. Quien administra la instalación debe activarlas antes.",
+    },
+  "A chamada de voz não está disponível neste servidor — sem ela o aparelho não pode ser desconectado.":
+    {
+      es: "Las llamadas de voz no están disponibles en este servidor; sin ellas el dispositivo no puede desconectarse.",
+    },
+  "nada foi gravado — verifique as permissões da organização": {
+    es: "no se guardó nada: revisa los permisos de la organización",
+  },
   "Listagem de sessões — em breve. Por enquanto, deslogue todos os dispositivos:": {
     es: "Listado de sesiones — próximamente. Por ahora, cierra sesión en todos los dispositivos:",
   },
