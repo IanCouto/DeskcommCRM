@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { requireSupportWrite } from "@/lib/impersonate/support";
 import { logger } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import { getWacallsClient, wacallsFriendlyError } from "@/lib/wacalls/client";
@@ -20,6 +21,11 @@ export const dynamic = "force-dynamic";
 const bodySchema = z.object({ contactId: z.string().uuid() });
 
 export async function POST(req: Request): Promise<Response> {
+  // Acompanhamento administrativo somente-leitura não liga, não atende, não
+  // desliga e não pareia: o efeito é do tenant, não de quem observa.
+  const suporteNegado = await requireSupportWrite();
+  if (suporteNegado) return suporteNegado;
+
   const requestId = randomUUID();
 
   const authz = await requireRole("agent", { requestId, resource: "voice_calls" });

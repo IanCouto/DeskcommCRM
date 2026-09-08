@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
+import { usePermission } from "@/hooks/auth/AuthProvider";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useRealtimeChannel } from "@/hooks/realtime/useRealtimeChannel";
 import { float32ToInt16LE, int16LEToFloat32 } from "@/lib/wacalls/pcm";
@@ -41,7 +42,22 @@ function ehRelevante(row: VoiceCallRow): boolean {
  */
 export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement | null>) {
   const { activeOrg } = useAuth();
-  const orgId = activeOrg?.orgId;
+  /**
+   * Quem NÃO pode ligar também não sonda e não assina.
+   *
+   * Este provider mora no shell autenticado inteiro (`app/app/layout.tsx`), então
+   * o efeito de boot abaixo dispara em TODA tela. `GET /voice/calls/history` pede
+   * `agent`; um `viewer` — e um acompanhamento administrativo somente-leitura,
+   * que `resolveActiveOrg` rebaixa a `viewer` — levava 403 a cada navegação, com
+   * o `.catch` engolindo o erro: invisível na tela, e o `expect(unexpectedDenials)
+   * .toEqual([])` de `tests/e2e/suporte-temporario.spec.ts` contando dois.
+   *
+   * O conserto não é afrouxar o gate da rota: é não pedir. Quem não atende
+   * telefone não precisa de painel de chamada, e um banner tocando para quem o
+   * botão "Atender" vai recusar com 403 é uma promessa falsa.
+   */
+  const podeLigar = usePermission("voice.call");
+  const orgId = podeLigar ? activeOrg?.orgId : undefined;
 
   const [call, setCall] = useState<VoiceCallRow | null>(null);
   const [muted, setMuted] = useState(false);
@@ -226,13 +242,14 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
   }, [call, connectingMedia, conectarMidia, teardownMedia]);
 
   const startCall = useCallback(async (contactId: string) => {
+    if (!podeLigar) return;
     try {
       const res = await apiClient.post<{ data: VoiceCallRow }>("/api/v1/voice/calls", { contactId });
       setCall(res.data);
     } catch (err) {
       showApiError(err);
     }
-  }, []);
+  }, [podeLigar]);
 
   const acceptCall = useCallback(async () => {
     const atual = callRef.current;

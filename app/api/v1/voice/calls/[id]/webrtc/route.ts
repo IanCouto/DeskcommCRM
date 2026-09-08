@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
 import { getWacallsClient, wacallsFriendlyError } from "@/lib/wacalls/client";
 import { resolveVoiceCall } from "@/lib/wacalls/calls";
@@ -20,6 +21,11 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  // Acompanhamento administrativo somente-leitura não liga, não atende, não
+  // desliga e não pareia: o efeito é do tenant, não de quem observa.
+  const suporteNegado = await requireSupportWrite();
+  if (suporteNegado) return suporteNegado;
+
   const requestId = randomUUID();
   const { id } = await params;
 
