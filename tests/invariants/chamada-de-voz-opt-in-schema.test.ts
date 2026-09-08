@@ -72,10 +72,23 @@ describe("schema do opt-in de chamada de voz", () => {
       `select policyname from pg_policies
         where schemaname = 'public' and tablename = 'org_voice_calls' order by policyname`,
     );
-    expect(pol.map((p) => p.policyname)).toEqual([
-      "org_voice_calls_admin_write",
-      "org_voice_calls_select",
-    ]);
+    const nomes = pol.map((p) => p.policyname);
+
+    // CONTÉM, e não IGUAL — e a diferença foi medida, não suposta. A primeira
+    // versão deste caso exigia exatamente estas duas e reprovou porque a tabela
+    // tinha CINCO: o baseline varre as tabelas tenant-aware e planta
+    // `support_write_{insert,update,delete}` em cada uma
+    // (`fn_support_write_allowed`, o bloqueio de escrita durante impersonação).
+    //
+    // Isso é BOA notícia — a proteção alcançou a tabela nova sozinha, e o
+    // `requireSupportWrite()` da rota deixa de ser a única linha de defesa —,
+    // mas transforma "só estas duas" numa asserção que reprova o correto. O que
+    // este caso guarda é a PRESENÇA das minhas duas.
+    expect(nomes).toContain("org_voice_calls_select");
+    expect(nomes).toContain("org_voice_calls_admin_write");
+
+    // Guarda do instrumento: a consulta precisa ter enxergado a tabela.
+    expect(nomes.length, "pg_policies não devolveu policy nenhuma").toBeGreaterThanOrEqual(2);
   });
 
   it("a `anon` não tem privilégio nenhum sobre a tabela", async () => {

@@ -110,6 +110,10 @@ export const ApiErrorCodes = {
   voice_desligada_na_organizacao: "voice_desligada_na_organizacao",
   voice_risco_nao_aceito: "voice_risco_nao_aceito",
   voice_indisponivel_na_instalacao: "voice_indisponivel_na_instalacao",
+  // 503: a leitura do estado não voltou. Separado dos dois acima de propósito —
+  // "não sei" não pode se disfarçar de "está desligada", que mandaria a pessoa
+  // procurar um interruptor quando o problema é o banco.
+  voice_estado_indeterminado: "voice_estado_indeterminado",
 
   // 500 / upstream
   internal_error: "internal_error",

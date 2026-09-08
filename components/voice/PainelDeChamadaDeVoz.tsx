@@ -99,19 +99,22 @@ export function PainelDeChamadaDeVoz() {
         body: JSON.stringify({ enabled: ligar, riscoAceito: ligar ? aceitou : undefined }),
       });
       const json = (await res.json().catch(() => null)) as
-        | { error?: { message?: string } }
+        | { error?: { message?: string }; data?: { aparelhoDesconectado?: boolean } }
         | null;
       if (!res.ok) {
         toast.error(json?.error?.message ?? t("Não foi possível salvar."));
         return;
       }
+      // A frase diz o que ACONTECEU, não o que foi gravado — e por isso vem do
+      // que a rota RESPONDEU. Afirmar "aparelho desconectado" quando não havia
+      // nada pareado (ou nenhum serviço a quem pedir o logout) seria uma frase
+      // tranquilizadora sobre algo que não aconteceu, num assunto que é risco.
       toast.success(
         ligar
           ? t("Chamada de voz ligada.")
-          : // A frase diz o que ACONTECEU, não o que foi gravado: desligar
-            // desconecta o aparelho de verdade, e quem clicou precisa saber
-            // que o vínculo caiu, não só que a tela mudou.
-            t("Chamada de voz desligada e aparelho desconectado."),
+          : json?.data?.aparelhoDesconectado
+            ? t("Chamada de voz desligada e aparelho desconectado.")
+            : t("Chamada de voz desligada."),
       );
       setAceitou(false);
       await carregar();

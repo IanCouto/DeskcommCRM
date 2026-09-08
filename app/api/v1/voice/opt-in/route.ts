@@ -149,11 +149,13 @@ export async function PUT(req: NextRequest): Promise<Response> {
   // continua marcada como ligada e a pessoa vê o erro. O contrário — gravar
   // "desligada" e falhar em desconectar — deixaria a tela dizendo que o risco
   // acabou com o aparelho ainda lá.
+  let aparelhoDesconectado = false;
   if (!corpo.enabled) {
     const wacalls = getWacallsClient();
     if (wacalls) {
       try {
         const resultado = await despareaVoz(db, wacalls, org.orgId);
+        aparelhoDesconectado = resultado.desapareado;
         if (resultado.desapareado) {
           void audit({
             action: "voice.session_unpaired",
@@ -220,5 +222,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
     metadata: { enabled: corpo.enabled },
   });
 
-  return ok(gravado, { requestId });
+  // `aparelhoDesconectado` viaja porque a TELA não pode inventá-lo. Sem este
+  // campo ela diria "e o aparelho foi desconectado" também no caso em que não
+  // havia serviço a quem pedir o logout — uma frase tranquilizadora sobre algo
+  // que não aconteceu, exatamente onde o assunto é risco.
+  return ok({ ...gravado, aparelhoDesconectado }, { requestId });
 }

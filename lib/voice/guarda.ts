@@ -62,11 +62,14 @@ export async function lerEscolhaDaOrg(
 /**
  * `null` = pode seguir. Uma `Response` = a rota devolve isso e para.
  *
- * Os dois códigos são distintos porque pedem ações diferentes de quem lê: 422
- * quando a organização não ligou (um admin dela resolve, na tela); 503 quando a
- * instalação não oferece o serviço (só quem administra a VPS resolve, e nenhum
- * clique adianta). Colapsar num só mandaria metade das pessoas para o lugar
- * errado.
+ * Os TRÊS códigos são distintos porque pedem ações diferentes de quem lê: 422
+ * quando a organização não ligou (um admin dela resolve, na tela); 503
+ * `voice_indisponivel_na_instalacao` quando a instalação não oferece o serviço
+ * (só quem administra a VPS resolve, e nenhum clique adianta); 503
+ * `voice_estado_indeterminado` quando a leitura não voltou. Colapsar num só
+ * mandaria parte das pessoas para o lugar errado — e o terceiro é o pior de
+ * colapsar, porque "não sei" disfarçado de "está desligada" faz procurar um
+ * interruptor quando o problema é o banco.
  */
 export async function exigirVozLigada(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,10 +81,15 @@ export async function exigirVozLigada(
   try {
     ({ escolha } = await lerEscolhaDaOrg(supabase, organizationId));
   } catch {
+    // FECHADO NA AÇÃO, mas com o código HONESTO. Devolver
+    // `voice_desligada_na_organizacao` aqui faria a tela dizer "peça a um
+    // administrador para ligar" — conselho errado, porque o que houve foi uma
+    // leitura que não voltou. A ação é recusada do mesmo jeito; o que não pode
+    // é a recusa AFIRMAR uma causa que ninguém mediu.
     return fail(
-      "voice_desligada_na_organizacao",
+      "voice_estado_indeterminado",
       "Não foi possível confirmar se a chamada de voz está ligada nesta organização.",
-      422,
+      503,
       { requestId: opts.requestId },
     );
   }

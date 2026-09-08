@@ -3367,7 +3367,6 @@ export const DICIONARIO: Traducoes = {
   "Escopos:": { es: "Alcances:" },
   "Webhooks registrados:": { es: "Webhooks registrados:" },
   "Proteção de envio atualizada.": { es: "Protección de envío actualizada." },
-  "Não foi possível salvar.": { es: "No se pudo guardar." },
   "Proteção de envio —": { es: "Protección de envío —" },
   "Estes limites protegem o número contra bloqueio do WhatsApp. Campo vazio usa o padrão seguro do sistema (mostrado no campo).": {
     es: "Estos límites protegen el número contra el bloqueo de WhatsApp. Campo vacío usa el valor seguro predeterminado del sistema (que se muestra en el campo).",
@@ -4025,7 +4024,6 @@ export const DICIONARIO: Traducoes = {
     es: "¿Desactivar la verificación en dos pasos de esta cuenta?",
   },
   "Verificação desligada.": { es: "Verificación desactivada." },
-  "Desligando…": { es: "Desactivando…" },
 
   // ─── app/actions/auth/politicaDeMfa.ts (erros do painel de Segurança/MFA) ───
   "Sua sessão expirou. Entre de novo.": { es: "Tu sesión expiró. Entra de nuevo." },
@@ -4107,13 +4105,13 @@ export const DICIONARIO: Traducoes = {
   },
   "Ligar chamada de voz": { es: "Activar llamadas de voz" },
   "Ligando…": { es: "Activando…" },
+  // Mensagens que as rotas de voz devolvem traduzidas (`traduzir(..., idioma)`).
   "Chamada de voz ligada.": { es: "Llamadas de voz activadas." },
+  "Chamada de voz desligada.": { es: "Llamadas de voz desactivadas." },
   "Chamada de voz desligada e aparelho desconectado.": {
     es: "Llamadas de voz desactivadas y dispositivo desconectado.",
   },
   "Não foi possível salvar.": { es: "No se pudo guardar." },
-  // Mensagens que as rotas de voz devolvem traduzidas (`traduzir(..., idioma)`).
-  "corpo inválido": { es: "cuerpo inválido" },
   "Para ligar a chamada de voz é preciso aceitar o risco de vincular um segundo aparelho ao seu número.":
     {
       es: "Para activar las llamadas de voz hay que aceptar el riesgo de vincular un segundo dispositivo a tu número.",
@@ -4126,9 +4124,6 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Las llamadas de voz no están disponibles en este servidor; sin ellas el dispositivo no puede desconectarse.",
     },
-  "nada foi gravado — verifique as permissões da organização": {
-    es: "no se guardó nada: revisa los permisos de la organización",
-  },
   "Listagem de sessões — em breve. Por enquanto, deslogue todos os dispositivos:": {
     es: "Listado de sesiones — próximamente. Por ahora, cierra sesión en todos los dispositivos:",
   },
