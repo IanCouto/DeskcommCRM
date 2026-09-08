@@ -29,10 +29,18 @@ export async function POST(
   const call = await resolveVoiceCall(supabase, activeOrg.orgId, id);
   if (!call) return fail("not_found", "Chamada não encontrada.", 404, { requestId });
 
+  if (call.status === "connected") {
+    return ok({ id, status: "connected" }, { requestId });
+  }
+
   try {
     await wacalls.acceptCall(call.wacallsSessionId, call.wacallsCallId, user.id);
     return ok({ id, status: "connected" }, { requestId });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("409") || msg.includes("already")) {
+      return ok({ id, status: "connected" }, { requestId });
+    }
     return fail("wacalls_error", wacallsFriendlyError(err), 502, { requestId });
   }
 }

@@ -91,10 +91,11 @@ async function handleCallStatus(
        (organization_id, channel_session_id, contact_id, wacalls_call_id, direction,
         peer_phone, status, started_at)
      values ($1, $2,
-             (select id from contacts where organization_id = $1 and phone_number = $5 limit 1),
+             (select id from contacts where organization_id = $1 and (phone_number = $5 or wa_lid = $5) and is_merged_into is null limit 1),
              $3, $4, $5, $6, to_timestamp($7 / 1000.0))
      on conflict (organization_id, wacalls_call_id) do update
        set status = excluded.status,
+           contact_id = coalesce(voice_calls.contact_id, excluded.contact_id),
            answered_at = case
              when voice_calls.answered_at is null and excluded.status = 'connected'
                then now()

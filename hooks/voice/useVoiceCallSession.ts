@@ -5,6 +5,7 @@ import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useRealtimeChannel } from "@/hooks/realtime/useRealtimeChannel";
+import { float32ToInt16LE, int16LEToFloat32 } from "@/lib/wacalls/pcm";
 
 export type VoiceCallStatus = "starting" | "ringing" | "connected" | "ended";
 
@@ -47,8 +48,11 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
   const [connectingMedia, setConnectingMedia] = useState(false);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const callRef = useRef<VoiceCallRow | null>(null);
+  const isAcceptingRef = useRef(false);
   // Sincronizado em efeito, não durante o render: `callRef` só serve pra
   // closures de callback (accept/reject/hangUp) lerem o valor mais recente
   // sem entrar nas dependências — nunca é lido durante a renderização em si.
@@ -57,10 +61,26 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
   }, [call]);
 
   const teardownMedia = useCallback(() => {
-    pcRef.current?.close();
+    try {
+      dcRef.current?.close();
+    } catch {}
+    dcRef.current = null;
+
+    try {
+      pcRef.current?.close();
+    } catch {}
     pcRef.current = null;
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+
+    try {
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {}
     localStreamRef.current = null;
+
+    try {
+      void audioCtxRef.current?.close();
+    } catch {}
+    audioCtxRef.current = null;
+
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     setMuted(false);
     setConnectingMedia(false);
@@ -112,29 +132,77 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
     enabled: !!orgId,
   });
 
-  /** Abre a RTCPeerConnection, captura o microfone e troca o SDP com o backend. */
+  /** Abre a RTCPeerConnection, conecta o DataChannel "pcm" e troca o áudio via AudioWorklets. */
   const conectarMidia = useCallback(async (callId: string) => {
     setConnectingMedia(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
 
-      const pc = new RTCPeerConnection();
+      const pc = new RTCPeerConnection({ iceServers: [] });
       pcRef.current = pc;
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-      pc.ontrack = (ev) => {
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = ev.streams[0] ?? null;
-          void remoteAudioRef.current.play().catch(() => {});
+
+      // O WaCalls opera áudio via DataChannel rotulado "pcm" com PCM 16kHz mono (Int16 LE)
+      const dc = pc.createDataChannel("pcm", { ordered: true });
+      dc.binaryType = "arraybuffer";
+      dcRef.current = dc;
+
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioContextClass({ sampleRate: 16000 });
+      audioCtxRef.current = ctx;
+
+      await ctx.audioWorklet.addModule("/worklets/capture-processor.js");
+      await ctx.audioWorklet.addModule("/worklets/playback-processor.js");
+      await ctx.resume();
+
+      // Microfone -> capture-processor -> DataChannel (PCM 16-bit LE)
+      const micSource = ctx.createMediaStreamSource(stream);
+      const captureNode = new AudioWorkletNode(ctx, "capture-processor");
+      captureNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
+        if (dc.readyState === "open") {
+          dc.send(float32ToInt16LE(e.data));
         }
       };
+      micSource.connect(captureNode);
+      // Conectar ao destination mantém o AudioWorkletNode ativo no Chromium
+      captureNode.connect(ctx.destination);
 
-      const offer = await pc.createOffer({ offerToReceiveAudio: true });
+      // DataChannel (PCM 16-bit LE) -> playback-processor -> MediaStreamDestination -> tag <audio>
+      const playbackNode = new AudioWorkletNode(ctx, "playback-processor");
+      const streamDest = ctx.createMediaStreamDestination();
+      playbackNode.connect(streamDest);
+      dc.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+        playbackNode.port.postMessage(int16LEToFloat32(e.data));
+      };
+
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = streamDest.stream;
+        void remoteAudioRef.current.play().catch(() => {});
+      }
+
+      const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+
+      // Aguarda a coleta de candidatos ICE completar para enviar a oferta com todos os candidatos
+      await new Promise<void>((resolve) => {
+        if (pc.iceGatheringState === "complete") {
+          resolve();
+        } else {
+          const checkState = () => {
+            if (pc.iceGatheringState === "complete") {
+              pc.removeEventListener("icegatheringstatechange", checkState);
+              resolve();
+            }
+          };
+          pc.addEventListener("icegatheringstatechange", checkState);
+        }
+      });
 
       const res = await apiClient.post<{ data: { sdpAnswer: string } }>(
         `/api/v1/voice/calls/${callId}/webrtc`,
-        { sdpOffer: offer.sdp },
+        { sdpOffer: pc.localDescription!.sdp },
       );
       await pc.setRemoteDescription({ type: "answer", sdp: res.data.sdpAnswer });
     } catch (err) {
@@ -143,7 +211,7 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
     } finally {
       setConnectingMedia(false);
     }
-  }, [teardownMedia, remoteAudioRef]);
+  }, [remoteAudioRef, teardownMedia]);
 
   // Assim que o Realtime confirma `connected`, abre o áudio — não antes: o
   // WaCalls só aceita a troca de SDP depois que o `<call>` foi realmente
@@ -168,11 +236,14 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
 
   const acceptCall = useCallback(async () => {
     const atual = callRef.current;
-    if (!atual) return;
+    if (!atual || isAcceptingRef.current) return;
+    isAcceptingRef.current = true;
     try {
       await apiClient.post(`/api/v1/voice/calls/${atual.id}/accept`, {});
     } catch (err) {
       showApiError(err);
+    } finally {
+      isAcceptingRef.current = false;
     }
   }, []);
 

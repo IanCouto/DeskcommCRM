@@ -5,7 +5,7 @@ import { useVoiceCall } from "@/components/voice/VoiceCallContext";
 import { useContact } from "@/hooks/contacts/useContact";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Phone, PhoneX } from "@/lib/ui/icons";
 import { useT } from "@/hooks/i18n/useT";
@@ -69,6 +69,13 @@ export function IncomingCallBanner() {
       className="fixed inset-x-0 top-4 z-50 mx-auto flex w-[min(420px,calc(100%-2rem))] items-center gap-4 rounded-xl border border-border bg-popover p-4 shadow-2xl animate-in fade-in slide-in-from-top-4"
     >
       <Avatar className="h-12 w-12 shrink-0">
+        {contact?.id ? (
+          <AvatarImage
+            src={`/api/v1/contacts/${contact.id}/avatar`}
+            alt=""
+            className="object-cover"
+          />
+        ) : null}
         <AvatarFallback className="bg-primary/15 text-base font-semibold text-primary">
           {inicial}
         </AvatarFallback>

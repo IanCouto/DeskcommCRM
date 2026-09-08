@@ -5,7 +5,7 @@ import { useVoiceCall } from "@/components/voice/VoiceCallContext";
 import { useContact } from "@/hooks/contacts/useContact";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { CircleNotch, Microphone, MicrophoneSlash, PhoneX } from "@/lib/ui/icons";
 import { useT } from "@/hooks/i18n/useT";
@@ -63,6 +63,13 @@ export function ActiveCallPanel() {
       className="fixed bottom-4 right-4 z-50 flex w-[min(320px,calc(100%-2rem))] items-center gap-3 rounded-xl border border-border bg-popover p-3 shadow-2xl animate-in fade-in slide-in-from-bottom-4"
     >
       <Avatar className="h-10 w-10 shrink-0">
+        {contact?.id ? (
+          <AvatarImage
+            src={`/api/v1/contacts/${contact.id}/avatar`}
+            alt=""
+            className="object-cover"
+          />
+        ) : null}
         <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
           {inicial}
         </AvatarFallback>
