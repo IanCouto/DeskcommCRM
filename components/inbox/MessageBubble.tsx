@@ -86,7 +86,7 @@ export function MessageBubble({ message, debugCitations, onResponder, citada }: 
           onClick={() => onResponder(message)}
           aria-label={t("Responder a esta mensagem")}
           className={cn(
-            "rounded p-1 text-muted-foreground transition-opacity hover:bg-muted",
+            "rounded-md p-1 text-muted-foreground transition-opacity hover:bg-muted",
             // VISÍVEL POR PADRÃO, e escondido só onde EXISTE hover.
             //
             // A primeira versão era `opacity-0` + `group-hover`, copiando o
@@ -128,7 +128,7 @@ export function MessageBubble({ message, debugCitations, onResponder, citada }: 
         {citada && (
           <div
             className={cn(
-              "mb-1 rounded border-l-2 px-2 py-1 text-xs",
+              "mb-1 rounded-md border-l-2 px-2 py-1 text-xs",
               isOutbound
                 ? "border-primary-foreground/50 bg-primary-foreground/10"
                 : "border-primary bg-background/60",
@@ -155,7 +155,7 @@ export function MessageBubble({ message, debugCitations, onResponder, citada }: 
           </div>
         )}
         {senderLabel && (
-          <div className="mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-80">
+          <div className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold opacity-80">
             {senderLabel === "IA" ? (
               <Robot size={10} weight="duotone" aria-hidden />
             ) : null}
@@ -193,7 +193,7 @@ export function MessageBubble({ message, debugCitations, onResponder, citada }: 
         <div
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[10px]",
-            isOutbound ? "text-primary-foreground/70" : "text-muted-foreground",
+            isOutbound ? "text-primary-foreground" : "text-muted-foreground",
           )}
         >
           {editada && (
@@ -220,7 +220,7 @@ export function MessageBubble({ message, debugCitations, onResponder, citada }: 
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {message.error_message ?? message.error_code ?? t("Erro desconhecido")}
+                  {message.error_message ? t(message.error_message) : (message.error_code ?? t("Erro desconhecido"))}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -233,7 +233,7 @@ export function MessageBubble({ message, debugCitations, onResponder, citada }: 
           onClick={() => onResponder(message)}
           aria-label={t("Responder a esta mensagem")}
           className={cn(
-            "rounded p-1 text-muted-foreground transition-opacity hover:bg-muted",
+            "rounded-md p-1 text-muted-foreground transition-opacity hover:bg-muted",
             // VISÍVEL POR PADRÃO, e escondido só onde EXISTE hover.
             //
             // A primeira versão era `opacity-0` + `group-hover`, copiando o

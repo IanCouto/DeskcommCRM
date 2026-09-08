@@ -507,10 +507,35 @@ envq() { printf '%s="%s"\n' "$1" "$(printf '%s' "${2-}" | sed 's/[\\"$`]/\\&/g')
 # mais difícil, e a última das credenciais — perdia tudo o que já tinha digitado
 # e recomeçava do zero na tentativa seguinte. Justamente quem mais precisa de
 # uma segunda tentativa é quem tem menos paciência para redigitar 11 campos.
-# Mesma permissão do .env (600): o conteúdo é o mesmo, inclusive os segredos.
+# Mesma permissão do .env (600): o conteúdo é quase o mesmo, segredos inclusive
+# — a exceção é o token de CONTA, e o bloco abaixo explica por quê.
 PARTIAL_FILE="${PARTIAL_FILE:-.env.partial}"
+
+# A exceção: segredo de CONTA não entra no rascunho, nem por um instante.
+#
+# O `SUPABASE_ACCESS_TOKEN` abre a Management API, que cria e apaga projetos —
+# por isso ele já não vai para o `.env` (não há `envq` para ele) e o README
+# promete, na tabela de pré-requisitos, que "ele não fica salvo: é usado uma vez
+# e some com o processo". O rascunho desmentia as duas coisas: `ask_one` chama
+# `save_partial` para TODA resposta aceita, então o token ficava em `.env.partial`
+# desde a pergunta até o `rm -f` que só acontece depois de o `.env` ser escrito —
+# e qualquer aborto no meio (Ctrl-C, DNS errado, `die` de validação) o deixava no
+# disco, para a tentativa seguinte recarregar.
+#
+# POR QUE PULAR A VARIÁVEL, e não um `trap` que apague o rascunho em qualquer
+# saída: o trap protegeria este segredo melhor e mataria a única razão de o
+# rascunho existir. Ele existe para a saída ANORMAL — é exatamente aí que o trap
+# dispararia, e quem travou na connection string voltaria a redigitar as 11
+# respostas anteriores. Pular tira do disco o que não pode ficar e deixa intacto
+# o que o rascunho protege.
+#
+# O efeito colateral é deliberado e está dito na tela (ver o aviso junto do
+# "✓ retomando"): ao retomar, o token é perguntado de novo. Para um segredo de
+# conta esse é o comportamento certo, e o campo é opcional — Enter pula.
+RASCUNHO_NAO_GUARDA=" SUPABASE_ACCESS_TOKEN "
 save_partial() {
   local var="$1" val="${!1-}" tmp="${PARTIAL_FILE}.tmp.$$"
+  case "$RASCUNHO_NAO_GUARDA" in *" $var "*) return 0 ;; esac
   umask 077
   { [ -f "$PARTIAL_FILE" ] && grep -vE "^${var}=" "$PARTIAL_FILE" || true; } > "$tmp"
   envq "$var" "$val" >> "$tmp"
@@ -655,6 +680,34 @@ rede_do_traefik() {  # rede_do_traefik <NetworkMode do contêiner> <redes do con
   local netmode="${1:-}" redes="${2:-}" nossa="${3:-}"
   [ "$netmode" = host ] && { printf '%s' "$nossa"; return 0; }
   printf '%s' "$redes" | awk '{print $1}'
+}
+
+# Como o Traefik da hospedagem CHAMA as portas 80 e 443. Os nomes `web` e
+# `websecure` são convenção da documentação, não regra: o EasyPanel batiza os
+# dele de `http` e `https`, e um label apontando para um entrypoint que não
+# existe não gera erro nenhum — o Traefik simplesmente ignora a rota, o domínio
+# cai no 404 do painel e a instalação termina verde com o site mudo. Medido numa
+# VPS com EasyPanel: os 6 contêineres no ar, /api/v1/health saudável por dentro
+# e o domínio devolvendo a página de erro do painel.
+#
+# A configuração do Traefik chega por env (TRAEFIK_ENTRYPOINTS_<NOME>_ADDRESS) ou
+# por flag (--entrypoints.<nome>.address), e a porta pode vir `:80`, `0.0.0.0:80`
+# ou com IP. Nome nenhum encontrado devolve vazio, e quem chama fica com o
+# default de sempre — quem instala hoje atrás de um Traefik com os nomes da
+# documentação não muda de comportamento.
+#
+# Isolada do Docker pelo mesmo motivo de `rede_do_traefik`: para o teste poder
+# exercitar a decisão sem uma VPS.
+entrypoints_do_traefik() {  # entrypoints_do_traefik <env e args do contêiner, um por linha> → "<nome do :80> <nome do :443>"
+  printf '%s\n' "${1:-}" | awk '
+    { l = tolower($0) }
+    l ~ /entrypoints[._][a-z0-9-]+[._]address=/ {
+      nome = l; sub(/[._]address=.*/, "", nome); sub(/.*entrypoints[._]/, "", nome)
+      porta = l; sub(/.*address=/, "", porta); sub(/\/.*/, "", porta); sub(/.*:/, "", porta)
+      if (porta == "80"  && http  == "") http  = nome
+      if (porta == "443" && https == "") https = nome
+    }
+    END { print http " " https }'
 }
 
 # Um Traefik eleito pela varredura de MODO HOST é suspeita, não prova. A eleição
@@ -829,6 +882,9 @@ if [ -f "$PARTIAL_FILE" ]; then
   load_env "$PARTIAL_FILE"
   c_grn "✓ retomando: $(grep -c '=' "$PARTIAL_FILE" 2>/dev/null || echo 0) resposta(s) guardadas da tentativa anterior"
   c_dim "  (para responder tudo de novo do zero: rm $PARTIAL_FILE)"
+  # Sem esta linha, ser perguntado de novo sobre o token — depois de uma tela
+  # dizendo que N respostas foram guardadas — lê como defeito do instalador.
+  c_dim "  (o token do Supabase é de conta e nunca entra no rascunho: ele é perguntado de novo. Enter pula)"
 fi
 
 # ── Proxy reverso: quem está com as portas 80 e 443? ────────────────────────
@@ -1178,6 +1234,16 @@ FIELDS=(
   "NEXT_PUBLIC_SUPABASE_ANON_KEY|Supabase anon key (Settings > API)||v_anon||"
   "SUPABASE_SERVICE_ROLE_KEY|Supabase service_role key (Settings > API)||v_service|secret|"
   "SUPABASE_DB_URL|Supabase connection string — Session pooler, modo URI (Settings > Database)||v_db_url|secret|"
+  # Token de conta, e por isso NÃO vai para o `.env` (não há `envq` para ele):
+  # a Management API que ele abre cria e apaga projetos, e guardá-lo numa VPS
+  # seria trocar um bug de primeira impressão por um passivo de segurança. Ele
+  # é usado uma vez, aqui, e some com o processo.
+  #
+  # Sem ele, o Site URL do projeto Supabase fica em `localhost:3000` — e o reset
+  # de senha, a confirmação de e-mail e o aceite de convite chegam com link para
+  # uma máquina que não existe fora do laptop de quem desenvolve. Era o estado
+  # de TODA instalação feita pelo caminho documentado. (issue #431/#426)
+  "SUPABASE_ACCESS_TOKEN|Token de acesso do Supabase — configura os links de e-mail (supabase.com/dashboard/account/tokens). NÃO fica salvo. Enter pula|||secret|opcional"
   "$CAMPO_IA"
   ${CAMPO_OPENAI_EXTRA:+"$CAMPO_OPENAI_EXTRA"}
   "OWNER_EMAIL|E-mail do primeiro admin (dono)||v_email||"
@@ -1306,6 +1372,25 @@ fi
 if [ "$REVERSE_PROXY" = "traefik" ] && [ -z "${TRAEFIK_NETWORK:-}" ]; then
   die "Não consegui descobrir a rede Docker do seu Traefik. Rode 'docker network ls',
 identifique a rede dele e ponha TRAEFIK_NETWORK=<nome> no .env antes de tentar de novo."
+fi
+# Os nomes dos entrypoints saem do MESMO contêiner que já respondeu pela rede.
+# Só entra onde o .env está vazio: quem declarou o nome à mão manda mais que a
+# leitura — é a mesma regra que TRAEFIK_NETWORK segue logo acima.
+if [ "$REVERSE_PROXY" = "traefik" ] && [ -n "$traefik_container" ] \
+   && { [ -z "${TRAEFIK_ENTRYPOINT:-}" ] || [ -z "${TRAEFIK_ENTRYPOINT_HTTP:-}" ]; }; then
+  traefik_conf="$(docker inspect \
+    -f '{{range .Config.Env}}{{println .}}{{end}}{{range .Args}}{{println .}}{{end}}' \
+    "$traefik_container" 2>/dev/null || true)"
+  entrypoints_achados="$(entrypoints_do_traefik "$traefik_conf")"
+  if [ -z "${TRAEFIK_ENTRYPOINT_HTTP:-}" ] && [ -n "${entrypoints_achados%% *}" ]; then
+    TRAEFIK_ENTRYPOINT_HTTP="${entrypoints_achados%% *}"
+  fi
+  if [ -z "${TRAEFIK_ENTRYPOINT:-}" ] && [ -n "${entrypoints_achados##* }" ]; then
+    TRAEFIK_ENTRYPOINT="${entrypoints_achados##* }"
+  fi
+  if [ -n "${TRAEFIK_ENTRYPOINT:-}" ]; then
+    c_dim "  (entrypoints do seu Traefik: ${TRAEFIK_ENTRYPOINT_HTTP:-web} para HTTP, ${TRAEFIK_ENTRYPOINT} para HTTPS)"
+  fi
 fi
 # Confere (e cria, quando a rede é a nossa) — em _common.sh, porque o update.sh
 # precisa da mesma garantia antes do `dc up -d` dele. Também aplica o default
@@ -1736,7 +1821,46 @@ fi
 #
 # `|| true` como cinto de segurança: o script já promete nunca sair diferente de
 # 0, e mesmo assim a instalação não pode morrer por causa do e-mail.
-bash "$KIT_DIR/marca-emails.sh" --projeto "$PROJECT_DIR" || true
+# O que o `marca-emails.sh` não conseguiu fazer sozinho, repetido na TELA FINAL
+# com o domínio já preenchido.
+#
+# O aviso dele existe desde sempre, e sai ~200 linhas antes do fim — no meio de
+# um log de dez minutos, seguido de uma tela verde de "Instalação concluída!".
+# Quem instala não volta para lê-lo, e descobre o problema quando um usuário
+# clica em "esqueci minha senha" e cai num `localhost:3000` que não existe fora
+# da máquina de quem desenvolve. (issue #431/#426)
+pendencia_dos_emails() {
+  [ -s "${PENDENCIA_EMAIL:-/dev/null}" ] || return 0
+  cat <<PEND
+
+$(c_ylw "  ─── FALTA UM PASSO, e ele é no painel do Supabase ─────")
+
+  Os e-mails de acesso (esqueci minha senha, confirmação de cadastro e
+  aceite de convite) ainda não levam para este app. Sem este passo,
+  ninguém consegue redefinir a própria senha.
+
+  O que o passo automático encontrou:
+
+$(sed 's/^/    /' "$PENDENCIA_EMAIL")
+
+  Em https://supabase.com/dashboard → seu projeto → Authentication →
+  URL Configuration, preencha:
+
+       Site URL:       https://${DOMAIN}
+       Redirect URLs:  https://${DOMAIN}/auth/confirm
+
+  Depois é só salvar — não precisa reiniciar nada aqui.
+
+  Para o instalador fazer isso sozinho da próxima vez, rode
+  \`bash hostgator-setup-kit/install.sh\` de novo e informe o token de
+  acesso quando ele perguntar (supabase.com/dashboard/account/tokens).
+PEND
+}
+
+PENDENCIA_EMAIL="$(mktemp)"
+PENDENCIA_ARQUIVO="$PENDENCIA_EMAIL" \
+  SUPABASE_ACCESS_TOKEN="${SUPABASE_ACCESS_TOKEN:-}" \
+  bash "$KIT_DIR/marca-emails.sh" --projeto "$PROJECT_DIR" || true
 
 # ── 8. Bootstrap do 1º dono (cria no Auth + promove via psql) ───────────────
 step "Criando o primeiro admin (${OWNER_EMAIL})"
@@ -1766,7 +1890,7 @@ begin
   end if;
   select id into v_org from public.organizations where slug='minha-empresa';
   if v_org is null then
-    -- `locale` aqui, e não só no usuário dono: é a organização que responde
+    -- locale aqui, e não só no usuário dono: é a organização que responde
     -- pelos convidados que ainda não existem. Quem entra sem preferência
     -- própria cai neste valor, então gravar só no dono entregaria o sistema em
     -- português para todo mundo que ele convidasse numa instalação em espanhol.
@@ -1930,6 +2054,7 @@ $(c_grn "═══════════════════════�
 $(c_grn " Instalação concluída!")
 $(c_grn "═══════════════════════════════════════════════════════")
 
+$(pendencia_dos_emails)
   1. Acesse:  https://${DOMAIN}
      (o SSL leva ~1min pra emitir no primeiro acesso)
 

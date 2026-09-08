@@ -1,3 +1,4 @@
+import { requireSupportWrite } from "@/lib/impersonate/support";
 /**
  * GET/PUT /api/v1/ai/providers — a configuração de IA de cada ponto do sistema.
  *
@@ -11,6 +12,7 @@
  * recusar naquele instante trocaria uma configuração ruim por um atendimento
  * perdido.
  */
+import { enxergaImagem } from "@/lib/ai/pontos/capacidade-em-vigor";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
@@ -29,6 +31,7 @@ import { PAPEIS, PONTOS_DE_IA, PONTO_POR_ID } from "@/lib/ai/pontos/registro";
 import { PROVEDORES, ehProvedorSuportado } from "@/lib/ai/pontos/provedores";
 import { validarBinding } from "@/lib/ai/pontos/validar-binding";
 import { createClient } from "@/lib/supabase/server";
+import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +49,7 @@ interface ModeloDoCatalogo {
 export async function GET(): Promise<Response> {
   const authz = await requireRole("manager", { resource: "ai_providers" });
   if (!authz.ok) return authz.response;
+  const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { org } = authz;
 
   const db = await createClient();
@@ -98,7 +102,18 @@ export async function GET(): Promise<Response> {
     ? { provider: versao.provider, credentialId: versao.credential_id, model: versao.model }
     : null;
 
-  const modelos = (modelosRes.data ?? []) as ModeloDoCatalogo[];
+  // ⚠️ A LISTA QUE A TELA DESENHA sai daqui, e `supports_vision` dela vinha da
+  // coluna — a mesma que discordava do motor. Reconciliar aqui, uma vez, é o
+  // que faz a lista, o aviso do binding e o motor darem a MESMA resposta.
+  // Ver `lib/ai/pontos/capacidade-em-vigor.ts`.
+  const modelos = ((modelosRes.data ?? []) as ModeloDoCatalogo[]).map((m) => ({
+    ...m,
+    supports_vision: enxergaImagem({
+      provider: m.provider,
+      modelId: m.model_id,
+      doCatalogo: m.supports_vision,
+    }),
+  }));
   const capacidadePorModelo = new Map(modelos.map((m) => [`${m.provider}|${m.model_id}`, m]));
 
   const pontos = PONTOS_DE_IA.map((ponto) => {
@@ -162,7 +177,7 @@ export async function GET(): Promise<Response> {
         // catálogo; o resolvedor puro não consulta banco.
         ...(capacidade && ponto.exige.tools === true && !capacidade.supports_tools
           ? [
-              `O modelo em uso não sabe usar as ferramentas do CRM — o agente conversa, mas não registra nada no funil.`,
+              t(`O modelo em uso não sabe usar as ferramentas do CRM — o agente conversa, mas não registra nada no funil.`),
             ]
           : []),
       ],
@@ -201,13 +216,17 @@ const corpoDoPut = z.object({
 });
 
 export async function PUT(req: NextRequest): Promise<Response> {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   const authz = await requireRole("admin", { resource: "ai_providers" });
   if (!authz.ok) return authz.response;
+  const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user, org } = authz;
 
   const parsed = corpoDoPut.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return fail("invalid_body", "corpo inválido", 422, { details: parsed.error.issues });
+    return fail("invalid_body", t("corpo inválido"), 422, { details: parsed.error.issues });
   }
   const corpo = parsed.data;
 
@@ -231,7 +250,14 @@ export async function PUT(req: NextRequest): Promise<Response> {
     modelo: {
       model_id: corpo.model_id,
       supports_tools: modelo?.supports_tools ?? false,
-      supports_vision: modelo?.supports_vision ?? false,
+      // A capacidade vem do MOTOR, não da coluna: os dois discordavam e a tela
+      // avisava "não enxerga imagens" sobre modelo que enxerga. Ver
+      // `lib/ai/pontos/capacidade-em-vigor.ts`.
+      supports_vision: enxergaImagem({
+        provider: corpo.provider,
+        modelId: corpo.model_id,
+        doCatalogo: modelo?.supports_vision ?? null,
+      }),
       conhecido: modelo !== null,
     },
   });
@@ -249,7 +275,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
       .eq("id", corpo.credential_id)
       .eq("organization_id", org.orgId)
       .maybeSingle();
-    if (!cred) return fail("credencial_invalida", "chave não encontrada nesta organização", 422);
+    if (!cred) return fail("credencial_invalida", t("chave não encontrada nesta organização"), 422);
     if (cred.provider !== corpo.provider) {
       return fail(
         "credencial_de_outro_provedor",
@@ -281,7 +307,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
   if (!gravado) {
     // Upsert que casa zero linhas devolve sucesso no PostgREST — a tela diria
     // "salvo" sem nada ter sido gravado.
-    return fail("save_failed", "nada foi gravado — verifique as permissões da organização", 500);
+    return fail("save_failed", t("nada foi gravado — verifique as permissões da organização"), 500);
   }
 
   void audit({
