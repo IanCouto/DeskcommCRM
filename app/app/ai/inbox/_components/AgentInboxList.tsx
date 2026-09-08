@@ -9,7 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAgentInbox, useUpdateInboxItem, type AgentInboxItem } from "@/hooks/ai/useAgentInbox";
+import {
+  useAgentInbox,
+  useResolveAllInboxItems,
+  useUpdateInboxItem,
+  type AgentInboxItem,
+} from "@/hooks/ai/useAgentInbox";
 import { kindLabel, SEVERITY_LABEL, type AgentInboxSeverity } from "@/lib/ai/agent-inbox-copy";
 import { Bell, Check } from "@/lib/ui/icons";
 import { useT } from "@/hooks/i18n/useT";
@@ -28,17 +33,31 @@ export function AgentInboxList({ canResolve }: { canResolve: boolean }) {
   const acessoNegado = error instanceof ApiError && (error.status === 401 || error.status === 403);
   const data = acessoNegado ? undefined : cachedData;
   const update = useUpdateInboxItem();
+  const resolveAll = useResolveAllInboxItems();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <Tabs value={tab} onValueChange={(v) => setTab(v as "open" | "resolved")}>
-        <TabsList>
-          <TabsTrigger value="open">
-            {t("Abertos")}{data ? ` (${data.open_count})` : ""}
-          </TabsTrigger>
-          <TabsTrigger value="resolved">{t("Resolvidos")}</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as "open" | "resolved")}>
+          <TabsList>
+            <TabsTrigger value="open">
+              {t("Abertos")}{data ? ` (${data.open_count})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="resolved">{t("Resolvidos")}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {canResolve && tab === "open" && data && data.items.length > 0 ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={resolveAll.isPending}
+            onClick={() => resolveAll.mutate()}
+          >
+            <Check size={14} aria-hidden />
+            {t("Marcar todos resolvidos")}
+          </Button>
+        ) : null}
+      </div>
 
       {isError ? (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-4 text-sm">
@@ -47,6 +66,10 @@ export function AgentInboxList({ canResolve }: { canResolve: boolean }) {
         </div>
       ) : null}
       {update.isError ? <p role="alert" className="text-sm text-destructive">{t("Não foi possível atualizar este aviso. Tente novamente.")}</p> : null}
+      {/* O lote pode falhar depois de resolver PARTE dos avisos: a mensagem manda
+          conferir a lista em vez de afirmar que nada mudou. Sem isto o clique em
+          "Marcar todos resolvidos" não deixaria rastro nenhum quando errasse. */}
+      {resolveAll.isError ? <p role="alert" className="text-sm text-destructive">{t("Não foi possível resolver todos os avisos. Confira a lista e tente novamente.")}</p> : null}
 
       {isLoading ? (
         <div className="space-y-2">
