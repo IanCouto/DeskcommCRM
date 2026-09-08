@@ -102,6 +102,14 @@ export type ActivityType =
   | "conversation_released"
   | "conversation_ai_paused"
   /**
+   * Chamada de voz WhatsApp (WaCalls, spec 18) encerrada — gravada na timeline
+   * junto com mensagens/notas. Emitida pela ponte de eventos do worker
+   * (`lib/wacalls/events-bridge.ts`) ao receber `call-ended`, via
+   * `emitAgentActivityForContact` (mesmo roteador contato→lead que o resto do
+   * sistema usa, `sourceModule: 'voice_calls'`).
+   */
+  | "voice_call"
+  /**
    * A TAREFA COMBINADA, na linha do tempo do negócio (migration 0210).
    *
    * "Ligar de volta na terça" só existe por causa de um negócio. Sem estas duas
@@ -219,6 +227,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // arquivos e o controle NEGATIVO de `handoff-por-orcamento.test.ts` usa
   // literalmente "Voltar para a IA" como a sabotagem que deve reprovar.
   conversation_ai_paused: "Pausou o automático",
+  voice_call: "Chamada de voz",
   task_created: "Tarefa combinada",
   task_completed: "Tarefa concluída",
   // Rótulo com OBJETO e sem jargão de banco: "Mesclado" sozinho é palavra de
