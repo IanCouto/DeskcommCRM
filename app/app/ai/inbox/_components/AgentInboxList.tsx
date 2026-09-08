@@ -128,11 +128,21 @@ function InboxRow({
         {t(SEVERITY_LABEL[item.severity])}
       </Badge>
       <div className="min-w-0 flex-1 basis-48 break-words">
-        <p className="text-sm font-medium">{t(item.title)}</p>
+        {/* TÍTULO E CORPO SAEM COMO VIERAM — nunca por t().
+            São LINHAS de `agent_inbox_items`, escritas pelo runtime no momento do
+            evento e recheadas com dado de gente: nome do cliente, número, motivo do
+            handoff, o que o operador cadastrou. É a mesma regra que já vale para nome
+            de funil, rótulo de etapa e conteúdo de mensagem — e a mesma que o PR #600
+            aplicou à Agenda. Passar isso pelo dicionário não traduz nada (a chave é a
+            frase inteira, que nunca casa) e, quando casa, troca a palavra que a pessoa
+            cadastrou por outra que ela não sabe procurar.
+            O que continua traduzido é o que é NOSSO: severidade, rótulo do kind,
+            orientação e rótulo do destino. */}
+        <p className="text-sm font-medium">{item.title}</p>
         <p className="text-xs text-muted-foreground">
           {kindLabel(item.kind, t)} · {when}
         </p>
-        {item.body ? <p className="mt-1 text-xs text-muted-foreground">{t(item.body)}</p> : null}
+        {item.body ? <p className="mt-1 text-xs text-muted-foreground">{item.body}</p> : null}
         {item.destination.orientacao ? <p className="mt-2 text-xs text-muted-foreground">{t(item.destination.orientacao)}</p> : null}
         {item.destination.estado === "disponivel" ? (
           <Button asChild size="sm" variant="link" className="mt-1 h-auto whitespace-normal px-0 text-left">
