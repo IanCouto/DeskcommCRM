@@ -23371,7 +23371,7 @@ end $$;
 
 
 
--- ---- chamada de voz: isolamento, LGPD e dono da ligação (migration 0234) ----
+-- ---- chamada de voz: isolamento, LGPD e dono da ligação (migration 0235) ----
 --
 -- Forward-fix da 0232. Tudo idempotente e auto-curativo: o `update.sh` de um
 -- clone que já aplicou a 0232 aplica isto por cima sem erro, e um banco novo
@@ -23584,7 +23584,7 @@ begin
     on conflict (bucket, object_path) do nothing;
   end if;
 
-  -- 7b. voice_calls — o TELEFONE de quem falou ao telefone (migration 0234).
+  -- 7b. voice_calls — o TELEFONE de quem falou ao telefone (migration 0235).
   --
   -- `peer_phone` é `not null` e guarda o número da outra ponta: depois de
   -- anonimizar o contato, ele sobrevivia ligado ao `contact_id` e reidentificava
@@ -23648,7 +23648,7 @@ begin
     'lead_edited',          -- humano mexeu nos dados
     'stage_changed',        -- humano moveu o negócio
     'next_action_approved', -- humano decidiu agir
-    -- (0234) Uma ligação ATENDIDA é interação, e das mais fortes: alguém falou
+    -- (0235) Uma ligação ATENDIDA é interação, e das mais fortes: alguém falou
     -- com o cliente. Sem esta linha o Radar de Risco seguia marcando como frio
     -- quem tinha acabado de passar vinte minutos ao telefone, e a IA propunha
     -- "retomar contato" com quem nunca ficou sem contato.
@@ -23707,7 +23707,7 @@ as $$
       and (p_owner is null or assigned_to_user_id = p_owner)
     group by assigned_to_user_id
   ),
-  -- (0234) Chamada de voz ATENDIDA conta como trabalho.
+  -- (0235) Chamada de voz ATENDIDA conta como trabalho.
   --
   -- Quem passa o dia ao telefone tinha produtividade zero nesta função: ela
   -- lia negócios fechados, conversas atribuídas e primeira resposta por
