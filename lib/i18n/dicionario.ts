@@ -1924,6 +1924,11 @@ export const DICIONARIO: Traducoes = {
   "Limite mensal (US$)": { es: "Límite mensual (US$)" },
   "Linha do tempo do aprendizado": { es: "Línea de tiempo del aprendizaje" },
   "Marcar resolvido": { es: "Marcar resuelto" },
+  "Marcar todos resolvidos": { es: "Marcar todos como resueltos" },
+  "Não foi possível resolver todos os avisos. Confira a lista e tente novamente.": {
+    es: "No se pudieron resolver todos los avisos. Revisa la lista e inténtalo de nuevo.",
+  },
+  "Falha ao resolver os avisos.": { es: "Fallo al resolver los avisos." },
   "Me avisar ao passar de": { es: "Avisarme al pasar de" },
   "Melhorias que você aprovou": { es: "Mejoras que aprobaste" },
   "Memória da IA": { es: "Memoria de la IA" },
