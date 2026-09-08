@@ -28,7 +28,7 @@
  * O objetivo é "não é instantâneo", não "é indistinguível de humano" — a
  * segunda meta custa o atendimento.
  *
- * `MINIMO` (1200ms) é o piso do throttle anti-ban do WAHA (CLAUDE.md: 1 msg /
+ * `MINIMO` (1200ms) é o piso do throttle anti-ban do canal (CLAUDE.md: 1 msg /
  * 1.2s). Um atraso "humano" menor que o piso que o anti-ban já impõe seria
  * decoração que não muda nada. `MAXIMO` (7500ms) é o teto: acima disso o
  * silêncio deixa de ler como "está digitando" e passa a ler como "caiu".
@@ -48,7 +48,7 @@ export const ATRASO_NOTAR_MS = 900;
 /** ≈45 caracteres/s — rápido de propósito; ver o cabeçalho. */
 export const MS_POR_CARACTERE = 22;
 
-/** Piso do throttle anti-ban do WAHA (CLAUDE.md). Abaixo dele o atraso não significa nada. */
+/** Piso do throttle anti-ban do canal (CLAUDE.md). Abaixo dele o atraso não significa nada. */
 export const ATRASO_MINIMO_MS = 1200;
 
 /** Acima disto o silêncio lê como queda, não como digitação. */
@@ -81,8 +81,8 @@ export interface EsperaHumanaArgs {
  * Acende o "digitando…" e espera. Devolve os ms esperados.
  *
  * ⚠️ A PRESENÇA FALHA MACIO, E ISSO NÃO É NEGOCIÁVEL. "digitando…" é decoração;
- * a mensagem é o produto. WAHA fora do ar, sessão que não está WORKING ou engine
- * que não implementa presença viram uma linha de log e o envio segue — deixar
+ * a mensagem é o produto. Transporte fora do ar, sessão que não está saudável ou
+ * canal que não implementa presença viram uma linha de log e o envio segue — deixar
  * uma chamada decorativa derrubar entrega seria trocar o produto pelo enfeite.
  *
  * A ordem também é o produto: sinalizar DEPOIS de esperar entregaria ao cliente
