@@ -41,6 +41,7 @@ import { withFields, type Logger } from '../obs/logger';
 import {
   getLeadContext,
   type LeadContext,
+  type LeadContextMessage,
   type LeadContextResult,
 } from '../edge/crm/get-lead-context';
 import { citationsFromHits, searchKnowledge } from './search-knowledge';
@@ -1272,6 +1273,43 @@ export function claimsCurrentInboundIsEmpty(candidate: string, currentInbound: s
 }
 
 /**
+ * Tudo que o cliente escreveu desde a última vez que ALGUÉM do nosso lado
+ * respondeu — cada mensagem inteira, em ordem, nunca emendadas.
+ *
+ * ## Por que não basta "a última inbound"
+ *
+ * O drain COALESCE rajada: com `INBOUND_DEBOUNCE_MS` (default 8000), a segunda
+ * mensagem do cliente não ganha job próprio — ela "entra de carona" no job da
+ * primeira (`edge/crm/drain.ts`, "Coalescência"). O turno responde à mensagem que
+ * o job aponta, e isso está certo; mas quem só olhasse essa mensagem não OUVIRIA
+ * a segunda. Um cliente que escreve "oi" e, três segundos depois, "quero falar
+ * com uma pessoa" tem que ser ouvido no segundo: calar um pedido de humano é
+ * pior que o defeito que o pin do job veio consertar.
+ *
+ * ## Por que uma LISTA, e não um texto emendado
+ *
+ * `ehPalavraIsolada` (lib/opt-out/deteccao.ts) exige que a mensagem INTEIRA seja
+ * a palavra-chave — é assim que "PARAR" descadastra e "tem como parar a dor?"
+ * não. Emendar as mensagens da rajada num texto só destruiria exatamente essa
+ * propriedade: "oi\nPARAR" não é palavra isolada, e o opt-out deixaria de
+ * disparar. Quem consome isto roda o detector POR MENSAGEM.
+ *
+ * O corte é a última OUTBOUND (resposta de humano conta — ela também é do nosso
+ * lado). Sem nenhuma outbound na janela, tudo que o cliente disse segue sem
+ * resposta, e é isso que a lista devolve.
+ */
+export function inboundsNaoRespondidos(messages: readonly LeadContextMessage[]): string[] {
+  const pendentes: string[] = [];
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    if (m === undefined) continue;
+    if (m.direction === 'outbound') break;
+    if (m.body.trim() !== '') pendentes.unshift(m.body);
+  }
+  return pendentes;
+}
+
+/**
  * Parâmetros do run que DIFEREM entre inbound (F2-09) e follow-up (F3-03): os ids
  * de envio (de fonte confiável — payload do drain no inbound, row do lead no
  * follow-up, nunca do payload do modelo) e a montagem da mensagem de abertura,
@@ -1927,11 +1965,25 @@ async function executarTurnoDoAgente(
   // e o gate 1 da cadeia (`stopGate`) lê `(is_blocked or force_human)` DIRETO da
   // fonte, sob o lock, a cada tentativa de envio. Avisar depois seria avisar
   // ninguém: a própria trava que a passagem acabou de armar veta a mensagem.
-  const inboundSignal = currentInboundText ?? latestInboundSignal(openingContext.context.messages);
+  // DUAS perguntas diferentes, duas fontes diferentes — e emendá-las foi o dano
+  // colateral medido do pin.
+  //
+  //  • `mensagemDoJob` é O QUE ESTE TURNO RESPONDE. Vem pinada no
+  //    `inbound_message_id`, para um registro concorrente não sequestrar o turno.
+  //  • `inboundsPendentes` é O QUE O CLIENTE DISSE e ainda não foi respondido.
+  //    Handoff, opt-out e urgência leem daqui: são coisas que não podem passar
+  //    despercebidas só porque chegaram na segunda mensagem de uma rajada, que o
+  //    drain coalesce no job da primeira.
+  const mensagemDoJob =
+    currentInboundText ?? latestInboundSignal(openingContext.context.messages);
+  const inboundsPendentes = inboundsNaoRespondidos(openingContext.context.messages);
   if (
     !preview &&
-    (detectHumanHandoffRequest(inboundSignal) ||
-      (agentConfig !== null && matchesHandoffKeyword(inboundSignal, agentConfig.handoffKeywords)))
+    inboundsPendentes.some(
+      (texto) =>
+        detectHumanHandoffRequest(texto) ||
+        (agentConfig !== null && matchesHandoffKeyword(texto, agentConfig.handoffKeywords)),
+    )
   ) {
     const aviso = await avisarLeadDaEscalacao(pool, avisoDaEscalacao().ids, {
       ...avisoDaEscalacao().base,
@@ -1960,7 +2012,7 @@ async function executarTurnoDoAgente(
   // (bot_silenced_until='infinity', que SOBREVIVE à leitura do CRM que sobrescreve o cache
   // is_opted_out) e escala à inbox para o humano confirmar o opt-out real (is_blocked) no
   // CRM. Cancela os follow-ups agendados de tabela. Nada disso reverte (regra dura nº 2).
-  if (!preview && detectAmbiguousOptOut(latestInboundSignal(openingContext.context.messages))) {
+  if (!preview && inboundsPendentes.some((texto) => detectAmbiguousOptOut(texto))) {
     // O aviso daqui NÃO fala em atendente — quem pediu para parar não quer ouvir
     // sobre atendimento (`textoDoAviso`, motivo `suspeita_de_opt_out`). Ele
     // CONFIRMA a parada, que é o padrão de mensageria para um opt-out, e diz que
@@ -2460,7 +2512,7 @@ async function executarTurnoDoAgente(
     send_message: tool({
       ...AGENT_TOOL_DEFS.send_message,
       execute: async ({ body }) => {
-        if (claimsCurrentInboundIsEmpty(body, inboundSignal)) {
+        if (claimsCurrentInboundIsEmpty(body, mensagemDoJob)) {
           falseEmptyInboundVetoCount += 1;
           if (falseEmptyInboundVetoCount < MAX_VETOS_DE_FALSO_VAZIO) {
             return {
@@ -2469,7 +2521,7 @@ async function executarTurnoDoAgente(
                 code: 'false_empty_inbound',
                 message:
                   'O cliente enviou texto nesta mensagem. Não diga que ela veio vazia, em branco ou sem texto. ' +
-                  `Responda ao pedido real agora: ${JSON.stringify(inboundSignal)}. ` +
+                  `Responda ao pedido real agora: ${JSON.stringify(mensagemDoJob)}. ` +
                   `Esta é a tentativa de correção ${falseEmptyInboundVetoCount}.`,
               },
             };
@@ -3813,7 +3865,7 @@ async function executarTurnoDoAgente(
       // produto, não deste guardrail), abre um alerta CRÍTICO na Central agora, pra um
       // humano poder responder manualmente pelo próprio WhatsApp enquanto o número
       // aquece. Dedupe por (kind, ref) — não reabre um já aberto pra esta conversa.
-      if (detectUrgencySignal(inboundSignal)) {
+      if (inboundsPendentes.some((texto) => detectUrgencySignal(texto))) {
         await insertInboxItem(
           pool,
           tenantId,

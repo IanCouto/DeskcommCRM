@@ -126,7 +126,7 @@ describe("a barreira está no caminho do envio, não numa função de ninguém",
   })();
 
   it("o veto roda dentro de send_message.execute", () => {
-    expect(corpoDoSend).toMatch(/claimsCurrentInboundIsEmpty\(body, inboundSignal\)/);
+    expect(corpoDoSend).toMatch(/claimsCurrentInboundIsEmpty\(body, mensagemDoJob\)/);
     expect(corpoDoSend).toContain("'false_empty_inbound'");
   });
 

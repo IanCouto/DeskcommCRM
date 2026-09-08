@@ -84,9 +84,13 @@ describe("fiação — o id sai do payload e chega ao sinal do turno", () => {
     expect(FONTE).toMatch(/inboundMessageId:\s*payload\.inbound_message_id/);
   });
 
-  it("o sinal do turno prefere a linha canônica ao último inbound do histórico", () => {
+  it("a mensagem que o turno RESPONDE é a linha canônica, não a última do histórico", () => {
+    // O nome mudou de `inboundSignal` para `mensagemDoJob` quando as duas
+    // perguntas do turno se separaram — o que o turno RESPONDE (pinado no job) e
+    // o que o cliente DISSE e ainda não foi respondido (a rajada inteira). Ver
+    // `rajada-nao-cala-o-pedido-de-humano.test.ts`.
     expect(FONTE).toMatch(
-      /const inboundSignal =\s*currentInboundText \?\? latestInboundSignal\(/,
+      /const mensagemDoJob =\s*currentInboundText \?\? latestInboundSignal\(/,
     );
   });
 
