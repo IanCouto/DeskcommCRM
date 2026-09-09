@@ -592,6 +592,15 @@ test.describe("followup flow builder — canvas visual (Task 6.2)", () => {
     await connectHandles(page, triggerId, endId);
     await expect(page.locator(".react-flow__edge")).toHaveCount(1);
 
+    // A grade da paleta (220px) é mais estreita que o card (224px): trigger e
+    // end nascem na mesma linha e a etiqueta da aresta senta debaixo do
+    // destino (`node-card-end-4` no CI). Organizar empilha em coluna e deixa
+    // o rótulo no vão — o mesmo gesto que o operador faria. O pane click
+    // fecha o painel do nó que o connectHandles pode ter deixado aberto.
+    await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
+    await page.getByTestId("auto-fit-flow").click();
+    await page.waitForTimeout(400);
+
     const edgeId = await page.locator(".react-flow__edge").getAttribute("data-id");
     if (!edgeId) throw new Error("aresta sem id");
     await page.locator(`[data-testid="rf__edge-${edgeId}"] .react-flow__edge-textbg`).click();
