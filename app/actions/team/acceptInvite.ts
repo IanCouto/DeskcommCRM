@@ -51,8 +51,22 @@ export async function acceptInviteAction(token: string): Promise<AcceptInviteRes
     return { ok: false, error: "email_mismatch", expectedEmail: payload.email };
   }
 
+  const admin = createAdminClient();
+
+  // Convite REVOGADO na tela de Equipe (migration 0232): o token ainda tem
+  // assinatura e validade boas, mas a linha diz que foi cancelado. Sem linha
+  // (convite antigo, ou instalação sem service-role no envio) segue o fluxo —
+  // a checagem de revogação de MEMBERSHIP no `fn_accept_team_invite` continua.
+  const { data: conviteRow } = await admin
+    .from("team_invites")
+    .select("revoked_at")
+    .eq("id", payload.invite_id)
+    .eq("organization_id", payload.organization_id)
+    .maybeSingle();
+  if (conviteRow?.revoked_at) return { ok: false, error: "invalid_or_expired" };
+
   // Org/papel/convidador vêm exclusivamente do token assinado; usuário do JWT.
-  const { data: result, error } = await createAdminClient().rpc("fn_accept_team_invite", {
+  const { data: result, error } = await admin.rpc("fn_accept_team_invite", {
     p_interface_settings: payload.interface_settings ?? { preset: "completa" },
     p_user: user.id,
     p_org: payload.organization_id,
@@ -73,6 +87,16 @@ export async function acceptInviteAction(token: string): Promise<AcceptInviteRes
       metadata: { invite_id: payload.invite_id, role: payload.role },
     });
   }
+
+  // Fecha o convite na tela de Equipe. Idempotente: `is("accepted_at", null)`
+  // faz o replay do mesmo token não mexer em nada.
+  await admin
+    .from("team_invites")
+    .update({ accepted_at: new Date().toISOString(), accepted_by: user.id })
+    .eq("id", payload.invite_id)
+    .eq("organization_id", payload.organization_id)
+    .is("accepted_at", null)
+    .is("revoked_at", null);
   (await cookies()).set("active_org", payload.organization_id, {
     httpOnly: true,
     sameSite: "strict",

@@ -68,6 +68,11 @@ export const AUDIT_ACTIONS = [
   "member.accepted",
   "member.role_changed",
   "member.revoked",
+  // Um convite PENDENTE cancelado na tela de Equipe (migration 0232). Distinto
+  // de `member.revoked` (tira acesso de quem já entrou): aqui ninguém chegou a
+  // ser membro. O REENVIO de um convite audita como `member.invited` — é uma
+  // nova emissão do mesmo convite.
+  "member.invite_revoked",
   "token.created",
   "token.revoked",
   "profile.updated",
