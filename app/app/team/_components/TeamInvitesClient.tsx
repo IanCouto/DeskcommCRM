@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ArrowsClockwise, Copy, DotsThree, Warning } from "@/lib/ui/icons";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { StatusConvite } from "@/lib/team/convite-status";
 
 interface Props {
@@ -64,12 +65,9 @@ export function TeamInvitesClient({ canManage }: Props) {
   };
 
   async function copyLink(url: string) {
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success(t("Link do convite copiado."));
-    } catch {
-      toast.error(t("Não foi possível copiar. Copie da barra do navegador."));
-    }
+    // Helper do repo (funciona em http://IP, self-host sem TLS), nunca a API crua.
+    if (await copyToClipboard(url)) toast.success(t("Link do convite copiado."));
+    else toast.error(t("Não foi possível copiar. Copie da barra do navegador."));
   }
 
   if (isLoading) {
