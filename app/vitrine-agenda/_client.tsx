@@ -132,7 +132,7 @@ export function VitrineDaAgenda() {
 
           {/* `flex-wrap` porque no celular o filtro de pessoas e o alternador de
               visão somam 433px numa tela de 390 — medido. Sem a quebra, o
-              alternador saía pela direita, e o `overflow-x: hidden` do
+              alternador saía pela direita, e o `overflow-x: clip` do
               `globals.css` cortava em silêncio: sem barra de rolagem, sem aviso,
               sem como trocar de visão. */}
           <div className="flex flex-wrap items-center gap-3">

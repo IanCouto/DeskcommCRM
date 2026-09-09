@@ -343,6 +343,10 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         // a página) e ela VOLTA a ocupar lugar: sobra para o conteúdo exatamente
         // o que ela não usou, e não há segunda medida para discordar.
         //
+        // Sticky só vale se html/body NÃO forem scroll container: `overflow-x:
+        // hidden` no `globals.css` computava overflow-y como `auto` e o menu
+        // subia com a página. A trava horizontal de lá é `clip` por isso.
+        //
         // `shrink-0` porque item de flex encolhe por padrão, e uma barra de 60
         // espremida para caber é o mesmo defeito por outro caminho.
         "sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r bg-card transition-[width] duration-200",

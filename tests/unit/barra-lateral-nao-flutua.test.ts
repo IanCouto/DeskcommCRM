@@ -41,6 +41,7 @@ const BARRA = readFileSync("components/shell/Sidebar.tsx", "utf8")
 const CASCA = readFileSync("app/app/_components/AppShell.tsx", "utf8")
   .replace(/\/\*[\s\S]*?\*\//g, "")
   .replace(/\/\/.*$/gm, "");
+const GLOBAIS = readFileSync("app/globals.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
 describe("a barra ocupa lugar, em vez de flutuar", () => {
   it("não é `fixed`", () => {
@@ -65,5 +66,17 @@ describe("a barra ocupa lugar, em vez de flutuar", () => {
     // o dia em que ela discorda da primeira.
     const margens = [...CASCA.matchAll(/\bml-(?:16|60)\b/g)].map((m) => m[0]);
     expect(margens, "voltou a segunda medida da mesma coisa").toEqual([]);
+  });
+
+  it("html e body cortam o estouro com `clip`, não com `hidden`", () => {
+    // `overflow-x: hidden` computa overflow-y como `auto` e transforma html/body
+    // em scroll container. A barra é `sticky` dentro de um body que não rola —
+    // quem rola é a viewport — então o menu sobe com a página. `clip` corta o
+    // mesmo estouro horizontal e não cria esse ancestral.
+    expect(GLOBAIS).toMatch(/html\s*\{[^}]*overflow-x:\s*clip/);
+    expect(GLOBAIS).toMatch(/body\s*\{[^}]*overflow-x:\s*clip/);
+    expect(GLOBAIS, "hidden no html/body é o que derruba o sticky").not.toMatch(
+      /(?:html|body)\s*\{[^}]*overflow-x:\s*hidden/,
+    );
   });
 });

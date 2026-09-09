@@ -963,7 +963,7 @@ export function GradeDaAgenda({
         <VisaoDeMes ancora={ancora} agora={agora} agendamentos={agendamentos} pessoas={pessoas} />
       ) : (
         // A rolagem mora AQUI dentro, e não na página: `html, body` têm
-        // `overflow-x: hidden` no globals.css, então uma grade que estourasse a
+        // `overflow-x: clip` no globals.css, então uma grade que estourasse a
         // largura simplesmente sumiria pela direita, sem barra para trazê-la de volta.
         <div ref={gradeRef} className="flex min-h-0 flex-1 overflow-auto">
           <ColunaDeHoras />
