@@ -9379,21 +9379,12 @@ alter table public.channel_sessions alter column waha_session_name drop not null
 alter table public.channel_sessions
   add column if not exists zernio_account_id text;
 
--- wacalls (migration 0232, chamada de voz) — colunas do quarto provider,
--- precisam existir antes das constraints abaixo referenciá-las.
-alter table public.channel_sessions
-  add column if not exists wacalls_session_id text,
-  add column if not exists wacalls_jid text,
-  add column if not exists wacalls_paired_at timestamptz;
-
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_check;
 
 alter table public.channel_sessions
   add constraint channel_sessions_provider_check
-  -- 'wacalls' (migration 0232, chamada de voz) somado aqui — UM bloco só por
-  -- constraint, doutrina de baseline (não duplicar drop+add por migration).
-  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'wacalls'::text]));
+  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text]));
 
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_ref_check;
@@ -9402,8 +9393,7 @@ alter table public.channel_sessions
   add constraint channel_sessions_provider_ref_check check (
     (provider = 'waha'       and waha_session_name    is not null) or
     (provider = 'meta_cloud' and meta_phone_number_id is not null) or
-    (provider = 'zernio'     and zernio_account_id    is not null) or
-    (provider = 'wacalls'    and wacalls_session_id    is not null)
+    (provider = 'zernio'     and zernio_account_id    is not null)
   );
 
 comment on column public.channel_sessions.zernio_account_id is
@@ -10113,11 +10103,6 @@ alter table public.agent_inbox_items
     -- tratava `skipped` como sucesso, e a linha da fonte seguia dizendo `ready`.
     -- Irmão direto de `midia_nao_lida`: mesma chave, mesmo silêncio.
     'conhecimento_nao_indexado',
-    -- (migration 0206, spec 18) Chamada de voz WhatsApp (WaCalls) recebida que
-    -- nunca teve answered_at — o "chamou e ninguém atendeu" precisa de dono,
-    -- mesma razão de midia_nao_lida/conhecimento_nao_indexado. Entra NESTA
-    -- lista, não em bloco novo (#159, bloco único por constraint).
-    'voice_call_missed',
     'other'
   ));
 
@@ -23220,7 +23205,76 @@ grant execute on function public.fn_reserve_channel_connection(uuid,uuid,text,te
 
 notify pgrst,'reload schema';
 
--- ---- chamada de voz WaCalls — voice_calls (migration 0232) ----
+-- ---- nome de sessão WAHA cabe no teto do WAHA (migration 0232) ----
+-- O `devlikeapro/waha:latest-2026.7.2` valida `name` de sessão com @MaxLength(54);
+-- `org_<32>_<32>` = 69 e todo `POST /api/sessions` de canal novo tomava 400. O
+-- prefixo da org encurta para 8 (`org_<8>_<32>` = 45), alinhado com a busca de
+-- canal de onboarding logo acima no corpo. Idempotente: `create or replace`.
+create or replace function public.fn_reserve_channel_connection(p_org uuid,p_key uuid,p_hash text,p_display_name text default null,p_onboarding boolean default false)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare receipt public.channel_connection_requests; channel public.channel_sessions; token uuid:=gen_random_uuid();
+begin
+ if auth.uid() is null or not public.fn_role_at_least(p_org,'admin') or not public.fn_support_write_allowed(p_org)
+ then raise exception 'connection_forbidden' using errcode='42501';end if;
+ if not public.fn_session_mfa_proven() then raise exception 'connection_mfa_required' using errcode='42501';end if;
+ if p_key is null or p_hash is null or length(p_hash)<>64 or length(coalesce(p_display_name,''))>100 then
+  raise exception 'connection_invalid_request' using errcode='22023';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_org::text,2281));
+ delete from public.channel_connection_requests where organization_id=p_org and idempotency_key=p_key
+  and state='succeeded' and updated_at<now()-interval '24 hours';
+ select * into receipt from public.channel_connection_requests where organization_id=p_org and idempotency_key=p_key for update;
+ if found then
+  if receipt.request_hash<>p_hash then raise exception 'idempotency_conflict' using errcode='22023';end if;
+  if receipt.state='succeeded' then
+   select * into channel from public.channel_sessions where organization_id=p_org and id=receipt.channel_session_id;
+   return jsonb_build_object('replay',true,'channel',to_jsonb(channel),'receipt_id',receipt.id);
+  end if;
+  if receipt.state='processing' and receipt.lease_until>now() then
+   raise exception 'connection_in_progress' using errcode='55P03';end if;
+  select * into channel from public.channel_sessions where organization_id=p_org and id=receipt.channel_session_id for update;
+  if not found then raise exception 'connection_reservation_missing' using errcode='P0002';end if;
+ else
+  if p_onboarding then
+   select * into channel from public.channel_sessions where organization_id=p_org and provider='waha'
+    and (metadata->>'onboarding'='true' or waha_session_name='org_'||left(p_org::text,8))
+    order by created_at limit 1 for update;
+  end if;
+  if channel.id is null then
+   insert into public.channel_sessions(organization_id,waha_session_name,display_name,engine,webhook_path_token,
+     webhook_secret_encrypted,status,last_status_change_at,consecutive_health_fails,daily_message_limit,metadata)
+   values(p_org,'org_'||left(replace(p_org::text,'-',''),8)||'_'||replace(gen_random_uuid()::text,'-',''),p_display_name,'NOWEB',
+     replace(gen_random_uuid()::text,'-',''),'\x00'::bytea,'STARTING',now(),0,250,
+     '{"ai_gate":"allowlist","ai_gate_mode":"pre_go_live","ai_test_phone_numbers":[]}'::jsonb
+     || case when p_onboarding then '{"onboarding":true}'::jsonb else '{}'::jsonb end) returning * into channel;
+  end if;
+  if exists(select 1 from public.channel_connection_requests where organization_id=p_org and channel_session_id=channel.id
+    and (state='processing' and lease_until>now())) then raise exception 'connection_in_progress' using errcode='55P03';end if;
+  insert into public.channel_connection_requests(organization_id,idempotency_key,request_hash,channel_session_id)
+   values(p_org,p_key,p_hash,channel.id) returning * into receipt;
+ end if;
+ if exists(select 1 from public.channel_connection_requests where organization_id=p_org and channel_session_id=channel.id
+   and id<>receipt.id and (state='processing' and lease_until>now())) then raise exception 'connection_in_progress' using errcode='55P03';end if;
+ update public.channel_connection_requests set state='processing',lease_token=token,lease_until=now()+interval '5 minutes',
+  remote_created=false,updated_at=now() where organization_id=p_org and id=receipt.id;
+ update public.channel_sessions set status='STARTING',status_reason='connection_pending',last_status_change_at=now()
+  where organization_id=p_org and id=channel.id returning * into channel;
+ return jsonb_build_object('replay',false,'channel',to_jsonb(channel),'receipt_id',receipt.id,'lease_token',token);
+end;
+$$;
+revoke all on function public.fn_reserve_channel_connection(uuid,uuid,text,text,boolean) from public,anon;
+grant execute on function public.fn_reserve_channel_connection(uuid,uuid,text,text,boolean) to authenticated;
+
+-- Auto-curativo: canal WAHA com nome fora do teto que nunca pareou nem está de
+-- pé recebe um nome curto. Sessão que o WAHA nunca aceitou; renomear é seguro.
+update public.channel_sessions
+   set waha_session_name = 'org_'||left(replace(organization_id::text,'-',''),8)||'_'||replace(gen_random_uuid()::text,'-',''),
+       updated_at = now()
+ where provider = 'waha' and waha_session_name is not null
+   and length(waha_session_name) > 54 and phone_number is null and status <> 'WORKING';
+
+notify pgrst,'reload schema';
+
+-- ---- chamada de voz WaCalls — voice_calls (migration 0233) ----
 --
 -- Spec docs/specs/18-spec-voice-calls-wacalls.md. As colunas wacalls_* e as
 -- constraints channel_sessions_provider_check/_ref_check já foram estendidas
@@ -23290,7 +23344,7 @@ create trigger trg_voice_calls_set_updated_at
   before update on public.voice_calls
   for each row execute function public.fn_set_updated_at();
 
--- Realtime (forward-fix da migration 0233): sem isto o frontend nunca recebe
+-- Realtime (forward-fix da migration 0234): sem isto o frontend nunca recebe
 -- o INSERT/UPDATE que o worker grava em call-status/call-ended — achado
 -- testando ao vivo, ligação real tocou e a tela ficou muda.
 do $$
