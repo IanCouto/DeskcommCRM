@@ -57,7 +57,10 @@ const MUTATING_METHODS = new Set<HttpMethod>(["POST", "PATCH", "PUT", "DELETE"])
  * garante UMA tentativa. Ela é limpa na primeira resposta boa, para que uma
  * revogação futura, na mesma aba, volte a ser tratada.
  */
-const MARCA_DE_RECARGA = "deskcomm:org-sumiu";
+// Sem o nome do produto dentro: uma imagem serve todas as marcas, e
+// `tests/unit/branding.test.ts` varre `lib/` atrás de marca cravada. A chave é
+// por origem (o próprio CRM), então não precisa de prefixo para não colidir.
+const MARCA_DE_RECARGA = "org-ausente:recarga";
 
 function leuMarca(): boolean {
   if (typeof window === "undefined") return false;
