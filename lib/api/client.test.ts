@@ -116,8 +116,9 @@ describe("apiClient", () => {
     // O bug: `AbortController.abort()` sem argumento sintetiza um DOMException
     // cuja MENSAGEM LITERAL é "signal is aborted without reason" — foi isso
     // que chegou à tela como "Runtime AbortError". Trava as duas pontas: o
-    // motivo tem nome reconhecível (mesma convenção de `lib/waha/client.ts`)
-    // e a mensagem genérica do navegador não aparece mais.
+    // motivo tem nome reconhecível (a mesma convenção de `TimeoutError` que o
+    // cliente HTTP da camada de canal já usa) e a mensagem genérica do
+    // navegador não aparece mais.
     expect(e.name).toBe("TimeoutError");
     expect(e.message).not.toMatch(/aborted without reason/i);
     expect(e.message).toMatch(/\d+ms/);
