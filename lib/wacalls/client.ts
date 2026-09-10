@@ -95,7 +95,14 @@ export class WacallsClient {
         headers: { "X-Client-Id": clientId },
         // record NUNCA true aqui — gravação fora de escopo desta versão
         // (spec §1.2 item 2, LGPD).
-        body: JSON.stringify({ phone }),
+        // DÍGITOS PUROS, sem o '+'. `contacts.phone_number` guarda E.164 com
+        // '+' (constraint `contacts_phone_e164_format`), e é de lá que a rota
+        // tira o número — mas o identificador do WhatsApp nunca tem o sinal.
+        // Mandar '+5511999998888' faz o upstream montar um JID inválido, e a
+        // ligação falha num ponto onde a mensagem de erro não diz por quê.
+        // É a mesma normalização que `lib/waha/send.ts` faz no envio de texto,
+        // e o espelho do `'+' || $5` na ponte de eventos, que LÊ.
+        body: JSON.stringify({ phone: phone.replace(/^\+/, "") }),
       },
     );
     return out.call;

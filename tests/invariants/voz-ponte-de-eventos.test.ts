@@ -43,7 +43,12 @@ const VOZ_CONTATO = "cccccccc-3333-4000-8000-0000000000f1";
 const VOZ_CONVERSA = "cccccccc-4444-4000-8000-0000000000f1";
 const VOZ_NEGOCIO = "cccccccc-6666-4000-8000-0000000000f1";
 const SESSAO_UPSTREAM = "wacalls-sessao-de-teste";
+// Duas formas, e a diferença é o defeito que este arquivo pegou: o WhatsApp
+// manda o peer em dígitos puros, e `contacts.phone_number` guarda E.164 com
+// '+' (constraint `contacts_phone_e164_format`). Uma fixture com a mesma forma
+// nos dois lados casaria por acidente e esconderia a ponte que não normaliza.
 const TELEFONE = "5511977770000";
+const TELEFONE_E164 = `+${TELEFONE}`;
 
 const PORTA = process.env.TEST_DB_PORT ?? "54329";
 const pool = new pg.Pool({
@@ -80,7 +85,7 @@ beforeAll(async () => {
       on conflict (id) do update set wacalls_session_id = excluded.wacalls_session_id,
                                      wacalls_paired_at = null, status = 'STARTING';
     insert into public.contacts (id, organization_id, display_name, phone_number)
-      values ('${VOZ_CONTATO}', '${GOV_ORG}', 'Contato da Voz', '${TELEFONE}')
+      values ('${VOZ_CONTATO}', '${GOV_ORG}', 'Contato da Voz', '${TELEFONE_E164}')
       on conflict (id) do update set phone_number = excluded.phone_number;
     insert into public.conversations (id, organization_id, contact_id, channel_session_id, status)
       values ('${VOZ_CONVERSA}', '${GOV_ORG}', '${VOZ_CONTATO}', '${GOV_SESSION}', 'ai_handling')

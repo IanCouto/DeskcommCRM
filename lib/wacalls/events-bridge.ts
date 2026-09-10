@@ -204,12 +204,26 @@ async function handleCallStatus(
   // aparecia para o escritório inteiro.
   const dono = donoValido(ev.owner);
 
+  // O peer do WhatsApp vem em DÍGITOS PUROS ("5511999998888"); a coluna
+  // `contacts.phone_number` guarda E.164 COM o "+", e a constraint
+  // `contacts_phone_e164_format` garante que é sempre assim. Casar cru contra
+  // cru NUNCA acha ninguém: toda ligação nasceria sem contato, sem atividade na
+  // linha do tempo, e o aviso de chamada perdida sem o botão de ligar de volta —
+  // o ramo "número que não casou com contato nenhum" deixaria de ser a exceção
+  // que o comentário abaixo descreve e passaria a ser TODA chamada.
+  // `lib/waha/ingest.ts:199` faz o mesmo `"+" + digitos` ao GRAVAR; aqui é a
+  // ponta que LÊ. O `wa_lid` continua cru: é identificador do WhatsApp, não
+  // telefone.
   const { rows } = await pool.query<{ contact_id: string | null }>(
     `insert into voice_calls
        (organization_id, channel_session_id, contact_id, wacalls_call_id, direction,
         peer_phone, status, started_at, owner_user_id)
      values ($1, $2,
-             (select id from contacts where organization_id = $1 and (phone_number = $5 or wa_lid = $5) and is_merged_into is null limit 1),
+             (select id from contacts
+               where organization_id = $1
+                 and (phone_number = '+' || $5 or phone_number = $5 or wa_lid = $5)
+                 and is_merged_into is null
+               limit 1),
              $3, $4, $5, $6, to_timestamp($7 / 1000.0), $8)
      on conflict (organization_id, wacalls_call_id) do update
        set status = excluded.status,

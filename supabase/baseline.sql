@@ -23265,10 +23265,25 @@ create index if not exists idx_voice_calls_channel_session on public.voice_calls
 
 alter table public.voice_calls enable row level security;
 
+-- (a 0235, mais abaixo neste arquivo, substitui esta policy pelo par
+-- select/write com papel; aqui ela já nasce com o papel para o caso de o
+-- apêndice ser aplicado parcialmente)
 drop policy if exists tenant_isolation_voice_calls_all on public.voice_calls;
-create policy tenant_isolation_voice_calls_all on public.voice_calls
-  using (organization_id in (select public.fn_user_org_ids()))
-  with check (organization_id in (select public.fn_user_org_ids()));
+drop policy if exists voice_calls_select on public.voice_calls;
+drop policy if exists voice_calls_write on public.voice_calls;
+
+create policy voice_calls_select on public.voice_calls for select
+  using (organization_id in (select public.fn_user_org_ids()));
+
+create policy voice_calls_write on public.voice_calls for all
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and public.fn_role_at_least(organization_id, 'agent')
+  )
+  with check (
+    organization_id in (select public.fn_user_org_ids())
+    and public.fn_role_at_least(organization_id, 'agent')
+  );
 
 drop trigger if exists trg_voice_calls_set_updated_at on public.voice_calls;
 create trigger trg_voice_calls_set_updated_at
@@ -23318,10 +23333,26 @@ create index if not exists idx_voice_calls_owner_answered
 -- ─── 2. isolamento declarado, não presumido ─────────────────────────────────
 alter table public.voice_calls enable row level security;
 
+-- Policy ALL que confere só a organização deixa QUALQUER membro escrever —
+-- inclusive `viewer`. Todo mundo da organização LÊ o histórico de ligações;
+-- quem ESCREVE é quem pode atender (`agent` para cima), o mesmo papel que as
+-- rotas de voz exigem. Vigiado por `tests/invariants/rbac-config-ia-canais.test.ts`.
 drop policy if exists tenant_isolation_voice_calls_all on public.voice_calls;
-create policy tenant_isolation_voice_calls_all on public.voice_calls for all
-  using (organization_id in (select public.fn_user_org_ids()))
-  with check (organization_id in (select public.fn_user_org_ids()));
+drop policy if exists voice_calls_select on public.voice_calls;
+drop policy if exists voice_calls_write on public.voice_calls;
+
+create policy voice_calls_select on public.voice_calls for select
+  using (organization_id in (select public.fn_user_org_ids()));
+
+create policy voice_calls_write on public.voice_calls for all
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and public.fn_role_at_least(organization_id, 'agent')
+  )
+  with check (
+    organization_id in (select public.fn_user_org_ids())
+    and public.fn_role_at_least(organization_id, 'agent')
+  );
 
 revoke all on public.voice_calls from anon;
 
