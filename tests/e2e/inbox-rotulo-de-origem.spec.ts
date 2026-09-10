@@ -11,7 +11,11 @@
  *      e chega ao componente. Um `select` sem a coluna devolve `undefined`, o
  *      componente cai no `return null` final, e **todos os rótulos somem em
  *      silêncio** — sem erro, sem vermelho, sem nada na tela;
- *   2. o rótulo aparece de fato no balão certo, e não atrás de outro elemento.
+ *   2. o rótulo aparece de fato no balão certo, e não atrás de outro elemento;
+ *   3. o "Você" é do usuário LOGADO. `sent_via='user'` registra que um humano
+ *      digitou no CRM, nunca qual — a distinção depende de `sent_by_user_id`
+ *      chegar à tela junto com o id da sessão. Um teste de componente pode
+ *      passar o par à mão; só a tela prova que a rota entrega os dois.
  *
  * As duas são exatamente a classe que a doutrina de QA Visual manda provar pelo
  * frontend: `curl` valida o backend, não o que o dono VÊ.
@@ -155,7 +159,7 @@ test.describe("Inbox — o balão diz de onde saiu a mensagem", () => {
     if (erroConversa) throw new Error(`conversations: ${erroConversa.message}`);
     conversaId = (conversa as { id: string }).id;
 
-    // As QUATRO linhas, com os valores que os emissores REAIS gravam — cada um
+    // As CINCO linhas, com os valores que os emissores REAIS gravam — cada um
     // com o arquivo que o carimba, para ninguém precisar acreditar nesta lista:
     //
     //   inbound  + external_device — o CLIENTE escreveu (lib/waha/ingest.ts:622)
@@ -163,8 +167,18 @@ test.describe("Inbox — o balão diz de onde saiu a mensagem", () => {
     //                                do CRM (lib/waha/ingest.ts:850)
     //   outbound + ai              — o agente respondeu
     //                                (workers/ai-response-worker.ts:1068)
-    //   outbound + user            — alguém digitou no CRM
-    //                                (app/api/v1/messages/_handler.ts:529)
+    //   outbound + user (eu)       — o agente que faz o login digitou no CRM
+    //                                (app/api/v1/messages/_handler.ts:529, que
+    //                                grava `sent_by_user_id` junto)
+    //   outbound + user (colega)   — OUTRA pessoa da mesma organização digitou
+    //                                no CRM
+    //
+    // ⚠️ AS DUAS ÚLTIMAS TÊM O MESMO `sent_via`. Também não é descuido: a
+    // coluna registra que *um humano digitou no CRM*, nunca QUAL — quem separa
+    // é `sent_by_user_id` contra o id de quem está lendo. Sem a quinta linha,
+    // um componente que dissesse "Você" em toda mensagem de `sent_via='user'`
+    // passaria neste spec, e numa org com dois atendentes cada um leria o
+    // atendimento do outro como seu.
     //
     // ⚠️ A PRIMEIRA E A SEGUNDA TÊM O MESMO `sent_via`. Isso não é descuido do
     // fixture: a ingestão carimba `external_device` nos dois sentidos, e quem
@@ -188,7 +202,8 @@ test.describe("Inbox — o balão diz de onde saiu a mensagem", () => {
       { ...base, direction: "inbound", status: "delivered", sent_via: "external_device", body: "PERGUNTA DO CLIENTE", sent_at: new Date(t0).toISOString() },
       { ...base, direction: "outbound", status: "sent", sent_via: "external_device", body: "RESPOSTA PELO CELULAR", sent_at: new Date(t0 + 1000).toISOString() },
       { ...base, direction: "outbound", status: "sent", sent_via: "ai", body: "RESPOSTA DO AGENTE", sent_at: new Date(t0 + 2000).toISOString() },
-      { ...base, direction: "outbound", status: "sent", sent_via: "user", body: "RESPOSTA DIGITADA NO CRM", sent_at: new Date(t0 + 3000).toISOString() },
+      { ...base, direction: "outbound", status: "sent", sent_via: "user", sent_by_user_id: creds.users.agent!.id, body: "RESPOSTA DIGITADA POR MIM", sent_at: new Date(t0 + 3000).toISOString() },
+      { ...base, direction: "outbound", status: "sent", sent_via: "user", sent_by_user_id: creds.users.manager!.id, body: "RESPOSTA DIGITADA PELO COLEGA", sent_at: new Date(t0 + 4000).toISOString() },
     ];
     // Uma a uma, e não em lote: no insert em LOTE o PostgREST une as chaves de
     // todas as linhas e manda NULL onde a linha não a tem — então uma linha que
@@ -242,7 +257,8 @@ test.describe("Inbox — o balão diz de onde saiu a mensagem", () => {
     const esperado: Array<[string, string]> = [
       ["RESPOSTA PELO CELULAR", "Celular"],
       ["RESPOSTA DO AGENTE", "IA"],
-      ["RESPOSTA DIGITADA NO CRM", "Você"],
+      ["RESPOSTA DIGITADA POR MIM", "Você"],
+      ["RESPOSTA DIGITADA PELO COLEGA", "Atendente"],
     ];
 
     for (const [corpo, rotulo] of esperado) {
@@ -256,12 +272,24 @@ test.describe("Inbox — o balão diz de onde saiu a mensagem", () => {
       ).toContainText(rotulo);
     }
 
+    // "VOCÊ" NÃO PODE APARECER NA MENSAGEM DE OUTRA PESSOA.
+    //
+    // A asserção positiva acima não fecha sozinha: "Atendente" e "Você" são
+    // textos distintos, mas um componente que desenhasse os DOIS rótulos na
+    // mesma bolha passaria no `toContainText("Atendente")`. Esta é a asserção
+    // que o dono da conta sente — ler o atendimento do colega como se fosse
+    // seu é a mentira, e ela não some por acrescentar um rótulo certo ao lado.
+    await expect(
+      balaoCom("RESPOSTA DIGITADA PELO COLEGA"),
+      "o balão do colega não pode dizer 'Você' — sent_via='user' não diz QUAL humano digitou",
+    ).not.toContainText("Você");
+
     // O CONTROLE NEGATIVO, e ele é o que separa "rotula certo" de "rotula
     // tudo": a mensagem RECEBIDA não leva rótulo de origem nenhum. Sem ele,
-    // um componente que carimbasse "Celular" em toda bolha passaria nos três
+    // um componente que carimbasse "Celular" em toda bolha passaria nos
     // casos acima.
     const bolhaDoCliente = balaoCom("PERGUNTA DO CLIENTE");
-    for (const rotulo of ["Celular", "IA", "Você"]) {
+    for (const rotulo of ["Celular", "IA", "Você", "Atendente"]) {
       await expect(
         bolhaDoCliente,
         `a mensagem do cliente não pode levar o rótulo "${rotulo}"`,
