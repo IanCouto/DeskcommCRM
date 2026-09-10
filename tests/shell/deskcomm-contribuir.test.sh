@@ -134,6 +134,20 @@ git switch -q main 2>/dev/null
 saida="$(bash .agents/skills/deskcomm-contribuir/scripts/pre-voo.sh 2>&1)"
 assert_contains "$saida" "você está na 'main'" "na main, manda abrir branch"
 
+echo "6. sessao.sh (hook de início de sessão)"
+clone="$TMP/c6"; clonar "$clone" "alguem@fork.dev"; git -C "$clone" config --unset core.hooksPath
+saida="$(cd "$clone" && bash .agents/skills/deskcomm-contribuir/scripts/hooks/sessao.sh)"; code=$?
+assert_exit "$code" 0 "sai com 0"
+assert_contains "$saida" "clone é de um contribuidor" "contribuidor recebe o lembrete"
+assert_contains "$saida" "NÃO armados" "diz que os hooks não estão armados"
+git -C "$clone" config core.hooksPath ".agents/skills/deskcomm-contribuir/scripts/hooks"
+saida="$(cd "$clone" && bash .agents/skills/deskcomm-contribuir/scripts/hooks/sessao.sh)"
+assert_contains "$saida" "contribuidor armados" "com hooks armados, diz que estão"
+git -C "$clone" config user.email "rafael@maudibrasil.com.br"
+saida="$(cd "$clone" && bash .agents/skills/deskcomm-contribuir/scripts/hooks/sessao.sh)"; code=$?
+assert_exit "$code" 0 "mantenedor: sai com 0"
+if [ -z "$saida" ]; then ok "mantenedor: silêncio total"; else falha "mantenedor: silêncio total" "saída: $saida"; fi
+
 echo
 if [ "$falhas" = 0 ]; then echo "deskcomm-contribuir: $casos casos, todos verdes"; exit 0
 else echo "deskcomm-contribuir: $falhas de $casos casos vermelhos"; exit 1; fi

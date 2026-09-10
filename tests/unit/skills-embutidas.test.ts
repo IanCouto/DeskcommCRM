@@ -148,6 +148,33 @@ describe("skills embutidas — o espelho de Claude é fiel à fonte", () => {
   });
 });
 
+describe("skills embutidas — as portas de acionamento conhecem todas as skills", () => {
+  // O acionamento automático depende de a descrição estar no contexto (os cinco
+  // CLIs fazem isso) E de a doutrina que cada CLI lê apontar para a skill certa:
+  // AGENTS.md (Codex, OpenCode, Cursor), CLAUDE.md (Claude Code), a rule
+  // sempre-ativa do Cursor e a do Antigravity. Uma skill nova que entre só na
+  // pasta fica invisível para quem não sabe que ela existe — que é o leigo.
+  const PORTAS = ["AGENTS.md", "CLAUDE.md", ".cursor/rules/deskcomm-guias.mdc", ".agents/rules/deskcomm-guias.md"];
+  const guias = SKILLS.filter((n) => n.startsWith("deskcomm-"));
+
+  it.each(PORTAS)("%s cita cada guia deskcomm-*", (porta) => {
+    const texto = readFileSync(join(RAIZ, porta), "utf8");
+    const ausentes = guias.filter((n) => !texto.includes(n));
+    expect(ausentes, `${porta} não menciona: ${ausentes.join(", ")}`).toEqual([]);
+  });
+
+  it("a regra do Cursor e a do Antigravity têm o mesmo corpo (só o cabeçalho muda)", () => {
+    const corpo = (p: string) => readFileSync(join(RAIZ, p), "utf8").split("\n---\n").slice(1).join("\n---\n").trim();
+    expect(corpo(".cursor/rules/deskcomm-guias.mdc")).toBe(corpo(".agents/rules/deskcomm-guias.md"));
+  });
+
+  it.each([".claude/settings.json", ".codex/hooks.json"])("%s é JSON válido e aponta para o hook de sessão", (arquivo) => {
+    const json = JSON.parse(readFileSync(join(RAIZ, arquivo), "utf8")) as { hooks?: { SessionStart?: unknown[] } };
+    expect(json.hooks?.SessionStart?.length ?? 0).toBeGreaterThan(0);
+    expect(JSON.stringify(json)).toContain("deskcomm-contribuir/scripts/hooks/sessao.sh");
+  });
+});
+
 describe("skills embutidas — fora da imagem Docker", () => {
   it(".dockerignore exclui as pastas de harness", () => {
     const linhas = readFileSync(join(RAIZ, ".dockerignore"), "utf8")

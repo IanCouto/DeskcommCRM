@@ -63,6 +63,8 @@ supabase/.branches/
 .claude/*
 !.claude/agents/
 !.claude/commands/
+# settings.json: só o hook de início de sessão dos guias (fala apenas em clone de contribuidor)
+!.claude/settings.json
 # skills/: allowlist por PREFIXO — só as deste repo. Liberar a pasta inteira
 # arrastaria skills locais de outros apps (Lina etc.) para o versionamento.
 # `.claude/skills/` é ESPELHO gerado de `.agents/skills/` (fonte única, lida
