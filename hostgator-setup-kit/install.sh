@@ -1568,8 +1568,10 @@ esac
   printf '# Marca da instalação (white-label). Preencha APP_LOGO_URL com a URL de uma\n'
   printf '# imagem pública para trocar o texto por logo na sidebar. Ver lib/branding.ts.\n'
   printf '# APP_ACCENT_HEX é a SEMENTE da cor: o banco (platform_branding) manda depois\n'
-  printf '# da primeira leitura, mas é daqui que sai a cor dos e-mails de acesso, que o\n'
-  printf '# marca-emails.sh empurra para o GoTrue e o banco não alcança.\n'
+  printf '# da primeira leitura. Nos e-mails de acesso depende da topologia: na NUVEM do\n'
+  printf '# Supabase quem empurra é o marca-emails.sh, lendo daqui, e o banco não alcança;\n'
+  printf '# num Supabase PRÓPRIO o GoTrue busca /email-templates/ do app, que resolve a\n'
+  printf '# marca pelo banco — e aí trocar em Configurações > Marca chega ao e-mail.\n'
   # Normaliza a escolha do idioma ANTES de gravar: o campo aceita "1"/"2"
   # porque é o que se digita lendo um menu numerado, mas quem lê o `.env` — o
   # bootstrap, o SQL abaixo, um operador conferindo — precisa do código.
