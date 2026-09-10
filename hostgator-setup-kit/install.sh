@@ -2048,6 +2048,20 @@ INCOMPLETO
   exit 1
 fi
 
+# O banner dizia "por padrão os erros são enviados" para TODA instalação — e a
+# pergunta de consentimento acima tem padrão NÃO enviar (issue #668 mediu o
+# .env do exemplo saindo com a telemetria ligada sem ninguém escolher). O texto
+# passa a refletir a escolha feita, em vez de afirmar um padrão.
+telemetria_no_banner() {
+  if [ "${SENTRY_DSN:-}" = "off" ]; then
+    printf '%s\n' "  Telemetria: DESLIGADA — nenhum relatório de erro sai desta instalação."
+    printf '%s\n' "  Para ligar, apague a linha SENTRY_DSN do .env e rode: docker compose $(dc_files) up -d"
+  else
+    printf '%s\n' "  Telemetria: LIGADA — só relatórios de erro anonimizados vão ao Sentry do"
+    printf '%s\n' "  projeto. Para desligar, ponha SENTRY_DSN='off' no .env e rode: docker compose $(dc_files) up -d"
+  fi
+}
+
 cat <<DONE
 
 $(c_grn "═══════════════════════════════════════════════════════")
@@ -2067,9 +2081,9 @@ $(pendencia_dos_emails)
        antes de abrir a tela — o QR code vale só uns minutos. Se expirar,
        o próprio CRM tem o botão "Gerar novo QR Code".
 
-  4. Ao terminar o onboarding, o CRM pede a verificação em duas etapas:
-       tenha o Google Authenticator/Authy à mão e GUARDE os códigos de
-       recuperação que aparecem. Perdeu o celular? bash hostgator-setup-kit/reset-mfa.sh ${OWNER_EMAIL}
+  4. A verificação em duas etapas é OPCIONAL: quem quiser liga em
+       Configurações → Segurança (guarde os códigos de recuperação).
+       Perdeu o celular? bash hostgator-setup-kit/reset-mfa.sh ${OWNER_EMAIL}
 
 $(c_grn "  ─── A comunidade ──────────────────────────────────────")
 
@@ -2078,9 +2092,7 @@ $(c_grn "  ─── A comunidade ───────────────�
 
        ${COMUNIDADE_URL}
 
-  Telemetria: por padrão os erros desta instalação são enviados ao Sentry do
-  projeto, o que ajuda a corrigir falhas que afetam todo mundo. Para desligar,
-  ponha SENTRY_DSN='off' no .env e rode: docker compose $(dc_files) up -d
+$(telemetria_no_banner)
 
   Comandos úteis:
     ver logs:      docker compose $(dc_files) logs -f app
