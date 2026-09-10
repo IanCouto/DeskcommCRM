@@ -217,14 +217,23 @@ async function handleCallStatus(
   const { rows } = await pool.query<{ contact_id: string | null }>(
     `insert into voice_calls
        (organization_id, channel_session_id, contact_id, wacalls_call_id, direction,
-        peer_phone, status, started_at, owner_user_id)
+        peer_phone, status, started_at, owner_user_id, answered_at)
      values ($1, $2,
              (select id from contacts
                where organization_id = $1
                  and (phone_number = '+' || $5 or phone_number = $5 or wa_lid = $5)
                  and is_merged_into is null
                limit 1),
-             $3, $4, $5, $6, to_timestamp($7 / 1000.0), $8)
+             $3, $4, $5, $6, to_timestamp($7 / 1000.0), $8,
+             -- Tambem no INSERT, e nao so no caminho de conflito: nem toda
+             -- chamada passa por 'ringing' antes de 'connected'. Ligacao de
+             -- SAIDA ja nasce conectando, e a ponte reconecta com backoff, entao
+             -- o primeiro evento que ela ve pode ser o 'connected'. Sem esta
+             -- linha, essas chamadas nasciam com answered_at nulo e NUNCA
+             -- contavam como atendidas: nao entravam nas metricas do atendente,
+             -- nao quebravam o silencio do negocio, e a de saida ainda virava
+             -- "chamada perdida" no aviso da Central quando desligasse.
+             case when $6 = 'connected' then now() else null end)
      on conflict (organization_id, wacalls_call_id) do update
        set status = excluded.status,
            contact_id = coalesce(voice_calls.contact_id, excluded.contact_id),

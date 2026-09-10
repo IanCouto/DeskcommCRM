@@ -261,6 +261,18 @@ describe("a IA se cala enquanto a ligação está de pé", () => {
 describe("chamada perdida vira aviso com porta, e o motivo vira frase de gente", () => {
   const PERDIDA = "chamada-de-teste-3";
 
+  // O negócio volta a esfriar ANTES deste bloco, e não é zelo: o bloco anterior
+  // ("a IA se cala") ATENDE chamadas, e ligação atendida quebra o silêncio de
+  // propósito (0079). Sem este reset, o caso do silêncio abaixo mediria o estado
+  // que o vizinho deixou em vez do efeito da chamada perdida — passaria ou
+  // falharia pela ordem dos testes, que é o pior tipo de verde.
+  beforeAll(async () => {
+    await pool.query(
+      `update public.crm_leads set last_activity_at = now() - interval '30 days' where id = $1`,
+      [VOZ_NEGOCIO],
+    );
+  });
+
   it("o aviso aponta para o contato e não carrega token do upstream", async () => {
     await pool.query(`delete from public.voice_calls where organization_id = $1`, [GOV_ORG]);
     await despachar({
