@@ -220,9 +220,30 @@ export const metaCloudAdapter: ChannelAdapter = {
       );
     }
 
+    // ⚠️ ALLOWLIST DE HOST, e ela é fail-closed de propósito: a `url` vem da
+    // resposta da Graph API, e seguir cegamente uma URL que chegou de fora é
+    // SSRF — mesmo vindo de um endereço autenticado.
+    //
+    // O sufixo, e não o host exato. O `lookaside.fbsbx.com` é o que a
+    // documentação da Meta cita, e era o que estava aqui; a leitura mais ampla
+    // (inclusive implementações de referência) descreve a mídia saindo também de
+    // hosts `*.fbcdn.net`. Não consegui MEDIR isso — não há conta Meta nesta
+    // casa —, e essa incerteza decide a direção do erro: um host legítimo
+    // recusado faz a mídia NUNCA chegar, com uma mensagem que parece problema de
+    // segurança e manda quem opera investigar o lugar errado. Um sufixo da Meta
+    // a mais não abre superfície nova.
+    //
+    // Se algum dia a lista precisar crescer de novo, cresça por SUFIXO de
+    // domínio da Meta — nunca para host arbitrário, e nunca sem `https:`.
+    const HOSTS_DE_MIDIA_DA_META = [".fbsbx.com", ".fbcdn.net"] as const;
     const mediaUrl = new URL(metadata.url);
-    if (mediaUrl.protocol !== "https:" || mediaUrl.hostname !== "lookaside.fbsbx.com") {
-      throw new Error("meta_media_lookup_failed: host de mídia inesperado.");
+    const hostPermitido = HOSTS_DE_MIDIA_DA_META.some(
+      (sufixo) => mediaUrl.hostname === sufixo.slice(1) || mediaUrl.hostname.endsWith(sufixo),
+    );
+    if (mediaUrl.protocol !== "https:" || !hostPermitido) {
+      throw new Error(
+        `meta_media_lookup_failed: host de mídia inesperado (${mediaUrl.protocol}//${mediaUrl.hostname}).`,
+      );
     }
 
     const download = await fetch(mediaUrl.toString(), {
