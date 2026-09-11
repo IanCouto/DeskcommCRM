@@ -428,7 +428,13 @@ test.describe("ciclo de vida do convite (ponta a ponta + adversarial)", () => {
     await page.goto("/app/team");
     const row = page.getByRole("row", { name: new RegExp(FRESH_EMAIL, "i") });
     await expect(row).toBeVisible();
-    await expect(row.getByText("Pendente")).toBeVisible();
+    // ⚠️ `exact: true`, e a razão está no endereço logo acima: o e-mail semeado
+    // CONTÉM a palavra "pendente" (`convite.pendente.<uuid>@…`). Sem `exact`, o
+    // `getByText` é substring e casa DUAS coisas na mesma linha — a célula do
+    // e-mail e o selo de status —, e o Playwright reprova por strict mode.
+    // Medido no CI em 11/09: `resolved to 2 elements`, com a célula do e-mail
+    // como a primeira. O selo diz exatamente "Pendente"; o endereço, não.
+    await expect(row.getByText("Pendente", { exact: true })).toBeVisible();
     // CI não configura Resend → o e-mail não sai, e a tela diz isso.
     await expect(row.getByText(/Não saiu/i)).toBeVisible();
     await expect(row.getByRole("button", { name: /Copiar link/i }).first()).toBeVisible();
