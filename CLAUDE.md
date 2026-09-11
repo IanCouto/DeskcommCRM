@@ -422,7 +422,17 @@ Ao mexer em schema, RLS, RBAC, atribuição, escopo, roteamento, follow-up, webh
 
 Processo padrão (siga sempre):
 
-1. **Arquivo versionado** em `supabase/migrations/` com o padrão do repo: `<timestamp>_<NNNN>_<slug>.sql` (ex.: `20260706210000_0027_whatsapp_conversation_unification.sql`). `NNNN` é o próximo número sequencial (veja o último em `ls supabase/migrations/`).
+1. **Arquivo versionado** em `supabase/migrations/` com o padrão do repo: `<timestamp>_<NNNN>_<slug>.sql` (ex.: `20260706210000_0027_whatsapp_conversation_unification.sql`). `NNNN` é o próximo número sequencial — e **não** é o do último arquivo da listagem:
+
+   ```bash
+   ls supabase/migrations/ | grep -oE '_[0-9]{4}_' | tr -d _ | sort -n | tail -1
+   ```
+
+   O nome do arquivo começa pelo **timestamp**, e timestamp e `NNNN` podem discordar: em
+   09/09/2026 o `ls | tail -1` devolvia o `_0230_` (timestamp de 07/09) enquanto o maior `NNNN`
+   era `_0231_` (timestamp de 05/09). Um contribuidor externo seguiu a instrução antiga ao pé da
+   letra, escolheu `0231`, e o `manifest-x-migrations` reprovou o PR dele por colisão — a
+   instrução é que estava errada, não ele. Ordene pelo número, nunca pela listagem.
 2. **Idempotente sempre que possível**: `add column if not exists`, `create ... if not exists`, `create or replace function`. Uma migration deve poder ser re-aplicada sem quebrar nem duplicar efeito.
 3. **Portável em `psql` puro** (clones podem não usar o MCP/CLI Supabase): **sem** `create temporary table ... on commit drop` fora de transação explícita; **sem** `BEGIN`/`COMMIT` explícito (o runner já envolve em transação, como as demais migrations). Prefira CTEs, subqueries de janela e colunas-mapa (ex.: `is_merged_into`) a temp tables.
 4. **Data migrations genéricas**: se a migration corrige/deduplica dados, escreva pensando em QUALQUER banco de clone (não hardcode IDs do seu tenant). Repointe FKs conferindo o catálogo (`information_schema` FK map) para não perder histórico.
