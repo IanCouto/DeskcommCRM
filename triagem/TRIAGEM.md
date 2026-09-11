@@ -1962,14 +1962,25 @@ Cada um destes foi cometido de verdade nesta casa, e é por isso que estão escr
     partido — incluindo a frase que importa: *"não estou recusando; quem decide isto não sou eu"*.
 
 47. **O CI é recurso compartilhado e saturável, e quem satura é você.** Abrir seis PRs de
-    reconciliação em vinte minutos pôs **17 execuções na fila** da conta em 11/09/2026 — e a
-    primeira vítima foi o próprio corte de versão, que ficou `queued` por mais de uma hora atrás
-    dos checks dos PRs que ele ia publicar.
+    reconciliação em vinte minutos pôs **41 execuções na fila** da conta em 11/09/2026, com 8 em
+    voo — e a primeira vítima foi o próprio corte de versão, que ficou `queued` por mais de uma
+    hora atrás dos checks dos PRs que ele ia publicar.
 
-    É o `feedback_saturacao_sem_perguntar_quem_satura` aplicado ao CI em vez da máquina local. A
-    regra prática: **antes de abrir o próximo PR, `gh run list --limit 20 --jq '[.[]|select(.status=="queued")]|length'`.**
-    Acima de ~8, termine o que está em voo antes de empilhar mais. E o corte de versão vai
-    **antes** da próxima leva, nunca depois — ele é o que entrega, e os outros só preparam.
+    É o `feedback_saturacao_sem_perguntar_quem_satura` aplicado ao CI em vez da máquina local.
+
+    **⚠️ A sonda óbvia mente, e mente para baixo.** `gh run list --limit 20 | select(queued)`
+    devolveu **17** no mesmo instante em que a API dizia 41: o `--limit` corta a lista ANTES do
+    filtro, então o número que sai é no máximo o limite. É o
+    `feedback_ausencia_afirmada_a_partir_de_lista_truncada` — para CONTAR, pergunte ao contador:
+
+    ```bash
+    gh api "repos/<owner>/<repo>/actions/runs?status=queued"      --jq .total_count
+    gh api "repos/<owner>/<repo>/actions/runs?status=in_progress" --jq .total_count
+    ```
+
+    A regra prática: **antes de abrir o próximo PR, conte com o `total_count`.** Acima de ~15 na
+    fila, termine o que está em voo antes de empilhar mais. E o corte de versão vai **antes** da
+    próxima leva, nunca depois — ele é o que entrega, e os outros só preparam.
 
 48. **A sonda de status do monitor casa o nome errado e declara verde.** Um filtro
     `test("^(verify|invariants|e2e|build-and-size)$")` **não casa `e2e-parte`** — o job que de fato
