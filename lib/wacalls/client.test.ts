@@ -30,10 +30,13 @@ describe("wacallsFriendlyError", () => {
 
 describe("WacallsClient", () => {
   const baseUrl = "http://wacalls-test:8080";
+  // O upstream autenticado não tem modo aberto: o cliente exige o Bearer no
+  // construtor, e sem ele toda chamada volta 401. Ver lib/env.ts.
+  const token = "token-de-teste";
   let client: WacallsClient;
 
   beforeEach(() => {
-    client = new WacallsClient(baseUrl);
+    client = new WacallsClient(baseUrl, token);
     vi.restoreAllMocks();
   });
 

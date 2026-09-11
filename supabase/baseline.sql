@@ -23830,6 +23830,69 @@ $$;
 revoke all on function public.fn_attendant_metrics(uuid,timestamptz,timestamptz,uuid) from public, anon;
 grant execute on function public.fn_attendant_metrics(uuid,timestamptz,timestamptz,uuid) to authenticated, service_role;
 
+-- ---- chamada de voz nasce desligada (migration 0236) ----
+--
+-- A chamada de voz vincula um SEGUNDO APARELHO ao mesmo número de WhatsApp que
+-- já atende, por um caminho que não é o oficial. O risco é a CONTA ser
+-- bloqueada, não o aparelho — e risco desse tamanho não se herda por
+-- atualização. Aplicar este bloco NÃO liga nada para ninguém: ele só cria a
+-- porta e o registro de quem assinou o risco.
+--
+-- AUSÊNCIA DE LINHA É "DESLIGADO" — e aqui isso é o CONTRÁRIO da 0142. Lá,
+-- `null` valia o ambiente porque havia instalações que já tinham decidido
+-- aquilo no `.env`. Aqui a capacidade é nova, ninguém a tem, e não há decisão
+-- anterior a preservar: `false` por ausência é a leitura verdadeira do estado
+-- do mundo.
+--
+-- LEITURA org-flat, ESCRITA de admin, no BANCO — a lição que a 0143 pagou como
+-- forward-fix da 0142: rota não é fronteira, e o `ALTER DEFAULT PRIVILEGES ...
+-- GRANT ALL ON TABLES TO anon, authenticated` deste mesmo baseline vale para
+-- toda tabela criada depois dele. Sem a policy de papel um `viewer` ligaria a
+-- feature pelo PostgREST com a anon key, sem auditoria.
+--
+-- Idempotente e auto-curativo: `create table if not exists` + `drop policy if
+-- exists` antes de cada `create policy`.
+
+create table if not exists public.org_voice_calls (
+  organization_id uuid primary key references public.organizations(id) on delete cascade,
+  enabled boolean not null default false,
+  risco_aceito_em timestamptz,
+  risco_aceito_por uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.org_voice_calls enable row level security;
+
+drop policy if exists org_voice_calls_select on public.org_voice_calls;
+drop policy if exists org_voice_calls_admin_write on public.org_voice_calls;
+
+create policy org_voice_calls_select on public.org_voice_calls
+  for select using (
+    (organization_id in (select public.fn_user_org_ids()))
+    or public.fn_is_platform_admin()
+  );
+
+create policy org_voice_calls_admin_write on public.org_voice_calls
+  using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'admin'))
+  )
+  with check (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'admin'))
+  );
+
+revoke all on public.org_voice_calls from anon;
+
+drop trigger if exists trg_org_voice_calls_set_updated_at on public.org_voice_calls;
+create trigger trg_org_voice_calls_set_updated_at
+  before update on public.org_voice_calls
+  for each row execute function public.fn_set_updated_at();
+
+notify pgrst, 'reload schema';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ ESTE BLOCO É, DE PROPÓSITO, O ÚLTIMO DO ARQUIVO. Apêndice novo entra ANTES

@@ -1,14 +1,33 @@
 /**
- * Cliente mínimo REST do WaCalls (chamada de voz WhatsApp) — spec
+ * Cliente REST do WaCalls (chamada de voz WhatsApp) — spec
  * docs/specs/18-spec-voice-calls-wacalls.md §4.1.
  *
- * Contrato medido no código-fonte upstream (cmd/server/httpapi.go, commit
- * edeb31f, o mesmo vendorizado em Dockerfile.wacalls), não na tabela do
- * README — ela erra o nome de campo (`state`, não `status`, em SessionInfo).
+ * ═══ ESTE CLIENTE FALA COM O UPSTREAM AUTENTICADO, E ISSO É A DECISÃO ═══
  *
- * A API do WaCalls não tem autenticação própria — por isso este cliente só é
- * instanciado server-side, contra `http://wacalls:8080` na rede interna do
- * compose, nunca exposto ao browser.
+ * A primeira versão desta feature falava com o commit `edeb31f` do WaCalls,
+ * cujo README diz, textualmente:
+ *
+ *   "The API has no authentication — anyone with HTTP access can create
+ *    accounts, place calls, and read history. Run it only on a trusted LAN."
+ *
+ * Aquele build ainda servia a UI React inteira e respondia
+ * `Access-Control-Allow-Origin: *`. A defesa era "está só na rede interna do
+ * compose" — o que é verdade até o dia em que alguém publica uma porta, e é
+ * exatamente por isso que existe `tests/unit/portas-do-compose.test.ts`.
+ * Segurança que depende de ninguém errar num arquivo YAML não é segurança.
+ *
+ * O upstream resolveu isso na origem: o serviço NÃO SOBE sem
+ * `WACALLS_ADMIN_USER`/`WACALLS_ADMIN_PASSWORD`, o CORS virou allowlist, entrou
+ * rate limit por IP e `WACALLS_API_TOKEN` como Bearer para automação. Por isso
+ * o `Authorization` abaixo não é defesa em profundidade opcional: **sem token,
+ * a API só é alcançável pelo cookie de login**, e um processo server-to-server
+ * não tem cookie. Sem `WACALLS_API_TOKEN` este cliente não funciona.
+ *
+ * ═══ O QUE MUDOU NO CONTRATO ═══
+ *
+ * `GET /api/sessions/{sid}/history` deixou de devolver `{rows}` e passa a
+ * devolver `{calls, nextCursor}` (keyset). Medido no README do `develop`, não
+ * inferido. O restante das rotas manteve caminho e forma.
  */
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -34,12 +53,21 @@ export interface WacallsCallRecord {
 }
 
 export class WacallsClient {
-  constructor(private readonly baseUrl: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly apiToken: string,
+  ) {}
 
   private async req<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: {
+        "Content-Type": "application/json",
+        // Bearer em TODA chamada. `/healthz` é a única rota aberta do upstream
+        // e não passa por aqui.
+        Authorization: `Bearer ${this.apiToken}`,
+        ...init?.headers,
+      },
       cache: "no-store",
     });
     if (!res.ok) {
@@ -57,8 +85,7 @@ export class WacallsClient {
 
   /**
    * POST /api/sessions/{sid}/pair — inicia o pareamento (QR).
-   * Não devolve QR síncrono: chega via SSE (`session-qr`), ver
-   * `lib/wacalls/events.ts`. 204 no sucesso.
+   * Não devolve QR síncrono: chega por SSE (`session-qr`). 204 no sucesso.
    */
   async pairSession(sessionId: string): Promise<void> {
     await this.req(`/api/sessions/${encodeURIComponent(sessionId)}/pair`, { method: "POST" });
@@ -70,10 +97,19 @@ export class WacallsClient {
     return out.sessions;
   }
 
+  /**
+   * DELETE /api/sessions/{sid} — remove a conta do WaCalls.
+   *
+   * Sozinho não basta para desparear: ver `lib/voice/desparear.ts`, que chama
+   * `logoutSession` ANTES desta. O par é o mesmo que
+   * `app/api/v1/channel-sessions/[id]/route.ts` faz para o transporte de
+   * mensagens.
+   */
   async deleteSession(sessionId: string): Promise<void> {
     await this.req(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
   }
 
+  /** POST /api/sessions/{sid}/logout — derruba o vínculo com o WhatsApp. */
   async logoutSession(sessionId: string): Promise<void> {
     await this.req(`/api/sessions/${encodeURIComponent(sessionId)}/logout`, { method: "POST" });
   }
@@ -83,11 +119,7 @@ export class WacallsClient {
    * `clientId` vira o dono da chamada (exclusividade) — SEMPRE o user.id da
    * sessão autenticada, nunca escolhido pelo frontend.
    */
-  async startCall(
-    sessionId: string,
-    clientId: string,
-    phone: string,
-  ): Promise<{ callId: string }> {
+  async startCall(sessionId: string, clientId: string, phone: string): Promise<{ callId: string }> {
     const out = await this.req<{ call: { callId: string } }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/calls`,
       {
@@ -95,15 +127,6 @@ export class WacallsClient {
         headers: { "X-Client-Id": clientId },
         // record NUNCA true aqui — gravação fora de escopo desta versão
         // (spec §1.2 item 2, LGPD).
-        // O '+' vai junto, e isso é MEDIDO, não descuido. `contacts.phone_number`
-        // guarda E.164 com '+' (constraint `contacts_phone_e164_format`) e é de
-        // lá que a rota tira o número; o identificador do WhatsApp não tem o
-        // sinal. A versão do upstream que este produto fixa normaliza no
-        // SERVIDOR (`handlers_call.go`: `TrimPrefix(p, "+")` e descarte de
-        // não-dígito), então tirar aqui seria redundância — e redundância que
-        // diverge é pior que ausência, porque some sem ninguém ver qual das duas
-        // pontas parou de limpar. A ponte de eventos, que LÊ, continua casando
-        // as duas formas (`'+' || $5 or $5`), porque ali o dado vem do WhatsApp.
         body: JSON.stringify({ phone }),
       },
     );
@@ -144,26 +167,60 @@ export class WacallsClient {
     );
   }
 
-  async history(sessionId: string): Promise<WacallsCallRecord[]> {
-    const out = await this.req<{ rows: WacallsCallRecord[] }>(
-      `/api/sessions/${encodeURIComponent(sessionId)}/history`,
+  /**
+   * GET /api/sessions/{sid}/history — chamadas encerradas, com cursor.
+   *
+   * O envelope é `{calls, nextCursor}`. A versão anterior lia `{rows}`, que era
+   * o formato do build sem autenticação — ler o campo errado devolve
+   * `undefined`, e um histórico vazio tem exatamente a mesma cara de "esta
+   * organização não ligou para ninguém".
+   */
+  async history(
+    sessionId: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<{ calls: WacallsCallRecord[]; nextCursor: string | null }> {
+    const busca = new URLSearchParams();
+    if (opts.limit !== undefined) busca.set("limit", String(opts.limit));
+    if (opts.cursor) busca.set("cursor", opts.cursor);
+    const qs = busca.toString();
+    const out = await this.req<{ calls: WacallsCallRecord[]; nextCursor?: string | null }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/history${qs ? `?${qs}` : ""}`,
     );
-    return out.rows;
+    return { calls: out.calls ?? [], nextCursor: out.nextCursor ?? null };
   }
 }
 
-/** `null` quando não configurado — chamador degrada para banner "indisponível". */
+/**
+ * `null` quando não configurado — o chamador degrada para "indisponível".
+ *
+ * As DUAS chaves são exigidas, e o token não é opcional por escolha nossa: o
+ * upstream autenticado só aceita Bearer OU cookie de login, e o app não tem
+ * cookie. Aceitar `baseUrl` sem token daria um cliente que constrói e devolve
+ * 401 em toda chamada — a falha apareceria no primeiro pareamento do cliente,
+ * não aqui.
+ */
 export function getWacallsClient(): WacallsClient | null {
-  const url = env.WACALLS_API_BASE_URL;
+  const url = (env.WACALLS_API_BASE_URL ?? "").trim();
+  const token = (env.WACALLS_API_TOKEN ?? "").trim();
   if (!url) {
     logger.debug("wacalls: WACALLS_API_BASE_URL ausente, cliente indisponível");
     return null;
   }
-  return new WacallsClient(url);
+  if (!token) {
+    // `warn`, e não `debug`: aqui há intenção declarada (a URL está no .env) e
+    // uma configuração pela metade. Silenciar isso é o caso em que a feature
+    // "não funciona e ninguém sabe por quê".
+    logger.warn("wacalls: WACALLS_API_TOKEN ausente — a API do WaCalls exige Bearer", {});
+    return null;
+  }
+  return new WacallsClient(url, token);
 }
 
 export function wacallsFriendlyError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("wacalls_401") || msg.includes("wacalls_403")) {
+    return "O serviço de chamada de voz recusou a credencial deste servidor. Confira WACALLS_API_TOKEN.";
+  }
   if (msg.includes("operator already on a call")) {
     return "Você já está em outra chamada. Encerre-a antes de iniciar uma nova.";
   }
