@@ -245,6 +245,15 @@ beforeAll(() => {
                     'inbound', '5511900000000', 'ended');
         end if;
 
+        -- org_voice_calls (0236): o opt-in da chamada de voz, uma linha por
+        -- organizacao. A PK e o proprio organization_id, entao a semente e
+        -- idempotente por construcao — mas o if not exists fica pelo mesmo
+        -- motivo das vizinhas: o seed roda duas vezes, uma por org.
+        if not exists (select 1 from public.org_voice_calls where organization_id = v_org) then
+          insert into public.org_voice_calls (organization_id, enabled)
+            values (v_org, false);
+        end if;
+
         if not exists (select 1 from public.push_subscriptions where organization_id = v_org) then
           insert into public.push_subscriptions
             (organization_id, user_id, endpoint, p256dh, auth)
@@ -314,6 +323,10 @@ export const TABLES = [
   // `_all` por default do Postgres, não por declaração — a 0235 a reescreve e
   // este é o caso que mede a reescrita pelo desfecho.
   "voice_calls",
+  // migration 0236 — o opt-in por organizacao da chamada de voz. Guarda quem
+  // aceitou o risco do segundo aparelho vinculado: vazar entre organizacoes
+  // diria a uma empresa quem, na outra, ligou a feature e quando.
+  "org_voice_calls",
   // ⚠️ `webhook_lead_captures` (migration 0174) NÃO entra nesta lista, e a
   // ausência é deliberada: a policy dela exige `manager`, e o usuário semeado
   // aqui é `agent` — o controle positivo falharia por ACERTO, e a "correção"
