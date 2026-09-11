@@ -7136,6 +7136,10 @@ export const DICIONARIO: Traducoes = {
   "Reativar microfone": { es: "Reactivar micrófono" },
   "Silenciar microfone": { es: "Silenciar micrófono" },
   "Encerrar chamada": { es: "Finalizar llamada" },
+  // Estado do TRANSPORTE de áudio, não da ligação — ver
+  // `hooks/voice/useVoiceCallSession.ts` (`EstadoDaMidia`).
+  "Abrindo o áudio…": { es: "Abriendo el audio…" },
+  "Sem áudio: o canal de voz não abriu": { es: "Sin audio: el canal de voz no se abrió" },
   "Chamada de voz": { es: "Llamada de voz" },
   "A chamada de voz não está configurada.": { es: "La llamada de voz no está configurada." },
   "Falta o endereço do serviço (": { es: "Falta la dirección del servicio (" },

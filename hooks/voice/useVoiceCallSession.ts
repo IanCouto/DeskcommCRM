@@ -10,6 +10,56 @@ import { float32ToInt16LE, int16LEToFloat32 } from "@/lib/wacalls/pcm";
 
 export type VoiceCallStatus = "starting" | "ringing" | "connected" | "ended";
 
+/**
+ * O que o CAMINHO DE ÁUDIO está fazendo — medido no `RTCPeerConnection`, não no
+ * banco.
+ *
+ * ═══ POR QUE ISTO EXISTE (a falha-em-verde que o produto tinha) ═══
+ *
+ * `call.status` vem de `voice_calls`, escrito pela ponte de eventos a partir do
+ * WhatsApp: ele diz que a LIGAÇÃO foi atendida, e essa é a verdade dele. Não diz
+ * nada sobre o áudio chegar até este navegador — são dois transportes
+ * diferentes, e na VPS o segundo é justamente o que quebra (porta UDP não
+ * publicada, `WACALLS_PUBLIC_IP` vazio: o WaCalls anuncia como candidato o IP
+ * interno do contêiner, `172.x`, que nenhum navegador da internet alcança).
+ *
+ * Com a versão anterior deste hook, esse cenário produzia o pior desfecho
+ * possível: `conectarMidia` terminava sem erro (a troca de SDP é HTTP e
+ * funciona), `connectingMedia` voltava a `false`, e o painel mostrava o
+ * cronômetro correndo — em silêncio absoluto. NADA no código escutava a
+ * `RTCPeerConnection`. Quem instalou não tinha como saber se o problema era a
+ * rede dele, o microfone, ou o produto.
+ *
+ * Os estados abaixo são degraus de PROVA, do mais fraco ao mais forte:
+ *
+ * - `negociando`  a conexão existe, ICE/DTLS/SCTP ainda não fecharam;
+ * - `aberta`      o canal `pcm` abriu. Isto NÃO é detalhe: um DataChannel só
+ *                 abre depois de ICE conectar, DTLS handshakear e SCTP
+ *                 associar — ou seja, o caminho UDP funciona nos dois sentidos.
+ *                 É a prova de que a rede está certa;
+ * - `com_audio`   chegou o primeiro quadro de PCM do outro lado. Prova de que
+ *                 há SOM, não só rota;
+ * - `sem_rota`    ICE falhou, ou o prazo venceu sem o canal abrir.
+ */
+export type EstadoDaMidia = "ociosa" | "negociando" | "aberta" | "com_audio" | "sem_rota";
+
+/**
+ * Quanto tempo o caminho de mídia tem para abrir antes de o painel declarar que
+ * não abriu.
+ *
+ * Existe porque `RTCPeerConnection.connectionState` NÃO é um sinal pontual: o
+ * navegador só o move para `failed` depois de esgotar as checagens de
+ * conectividade de todos os pares de candidatos, o que numa rede que
+ * simplesmente engole UDP leva dezenas de segundos. Sem prazo, o painel ficaria
+ * "Abrindo áudio…" por tempo indeterminado — que é a mesma mentira de antes com
+ * outra roupa.
+ *
+ * O prazo NÃO desliga nada e NÃO é definitivo: se o canal abrir em 14s,
+ * `dc.onopen` corrige o estado. Ele só impede que "não sei" se disfarce de
+ * "quase lá".
+ */
+const PRAZO_PARA_ABRIR_MS = 12_000;
+
 export interface VoiceCallRow {
   id: string;
   contact_id: string | null;
@@ -66,9 +116,21 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
   const [call, setCall] = useState<VoiceCallRow | null>(null);
   const [muted, setMuted] = useState(false);
   const [connectingMedia, setConnectingMedia] = useState(false);
+  const [estadoDaMidia, setEstadoDaMidia] = useState<EstadoDaMidia>("ociosa");
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
+  const prazoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * "Já chegou áudio?" mora num ref, e não no estado, de propósito.
+   *
+   * `dc.onmessage` dispara a cada quadro de PCM — o worklet de captura do
+   * WaCalls empacota 128 amostras a 16 kHz, ou seja ~125 mensagens por segundo,
+   * em cada sentido. Um `setEstadoDaMidia` incondicional ali re-renderizaria o
+   * shell autenticado INTEIRO 125 vezes por segundo durante a ligação toda. O
+   * ref deixa o `setState` acontecer exatamente uma vez, no primeiro quadro.
+   */
+  const recebeuAudioRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const callRef = useRef<VoiceCallRow | null>(null);
@@ -120,9 +182,14 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
     } catch {}
     audioCtxRef.current = null;
 
+    if (prazoRef.current) clearTimeout(prazoRef.current);
+    prazoRef.current = null;
+    recebeuAudioRef.current = false;
+
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     setMuted(false);
     setConnectingMedia(false);
+    setEstadoDaMidia("ociosa");
   }, [remoteAudioRef]);
 
   // Carrega a chamada em andamento no boot (refresh de página no meio de uma
@@ -174,10 +241,31 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
   /** Abre a RTCPeerConnection, conecta o DataChannel "pcm" e troca o áudio via AudioWorklets. */
   const conectarMidia = useCallback(async (callId: string) => {
     setConnectingMedia(true);
+    setEstadoDaMidia("negociando");
+    recebeuAudioRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
 
+      /**
+       * `iceServers: []` é DELIBERADO, e vale só porque o outro lado tem
+       * endereço público.
+       *
+       * O WaCalls funila toda a mídia numa porta UDP fixa
+       * (`ice.NewMultiUDPMuxFromPort`, `internal/app/webrtc.go`) e reescreve o
+       * candidato para `WACALLS_PUBLIC_IP` com tipo `host`. Então o par de
+       * candidatos que fecha a conexão é [host privado do navegador] ↔ [host
+       * público do servidor]: o navegador manda o Binding request, o NAT dele
+       * reescreve a origem, e o pion aprende o endereço mapeado como candidato
+       * *peer-reflexive* (RFC 8445 §7.3.1.3). Nenhum dos dois lados precisou de
+       * STUN para isso — o servidor já sabe o próprio endereço público porque
+       * o operador o declarou.
+       *
+       * Um STUN aqui só acrescentaria candidatos `srflx` do navegador, que o
+       * servidor nunca precisa usar. O que FALTA mesmo, e não é isto, é TURN:
+       * numa rede que bloqueia UDP de saída não há travessia possível, e é
+       * exatamente esse caso que `sem_rota` passa a nomear em vez de esconder.
+       */
       const pc = new RTCPeerConnection({ iceServers: [] });
       pcRef.current = pc;
 
@@ -185,6 +273,30 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
       const dc = pc.createDataChannel("pcm", { ordered: true });
       dc.binaryType = "arraybuffer";
       dcRef.current = dc;
+
+      // Só a partir daqui existe alguém escutando o transporte de verdade.
+      // Antes disto, o único sinal de áudio na tela vinha do banco.
+      dc.onopen = () => {
+        setEstadoDaMidia(recebeuAudioRef.current ? "com_audio" : "aberta");
+      };
+      pc.onconnectionstatechange = () => {
+        const estado = pc.connectionState;
+        if (estado === "failed" || estado === "closed" || estado === "disconnected") {
+          setEstadoDaMidia("sem_rota");
+          return;
+        }
+        // Reconexão: `dc.onopen` não dispara de novo num canal que já abriu, e
+        // sem esta volta o painel ficaria preso em "sem áudio" depois de um
+        // soluço de rede que se resolveu sozinho.
+        if (estado === "connected" && dc.readyState === "open") {
+          setEstadoDaMidia(recebeuAudioRef.current ? "com_audio" : "aberta");
+        }
+      };
+      prazoRef.current = setTimeout(() => {
+        // Functional update: só derruba quem ainda está negociando. Se o canal
+        // abriu no intervalo, este disparo é inofensivo.
+        setEstadoDaMidia((atual) => (atual === "negociando" ? "sem_rota" : atual));
+      }, PRAZO_PARA_ABRIR_MS);
 
       const AudioContextClass =
         window.AudioContext ||
@@ -213,6 +325,14 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
       const streamDest = ctx.createMediaStreamDestination();
       playbackNode.connect(streamDest);
       dc.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+        // O primeiro quadro que chega é a prova mais forte que existe de que a
+        // ligação tem SOM — mais forte que o canal aberto, e incomparavelmente
+        // mais forte que a linha no banco. Ver `recebeuAudioRef` para por que a
+        // guarda não é opcional.
+        if (!recebeuAudioRef.current) {
+          recebeuAudioRef.current = true;
+          setEstadoDaMidia("com_audio");
+        }
         playbackNode.port.postMessage(int16LEToFloat32(e.data));
       };
 
@@ -328,6 +448,8 @@ export function useVoiceCallSession(remoteAudioRef: RefObject<HTMLAudioElement |
     minha,
     muted,
     connectingMedia,
+    /** O que o transporte de áudio está fazendo DE FATO — ver `EstadoDaMidia`. */
+    estadoDaMidia,
     startCall,
     acceptCall,
     rejectCall,
