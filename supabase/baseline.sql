@@ -9379,12 +9379,21 @@ alter table public.channel_sessions alter column waha_session_name drop not null
 alter table public.channel_sessions
   add column if not exists zernio_account_id text;
 
+-- wacalls (migration 0233, chamada de voz) — colunas do quarto provider,
+-- precisam existir antes das constraints abaixo referenciá-las.
+alter table public.channel_sessions
+  add column if not exists wacalls_session_id text,
+  add column if not exists wacalls_jid text,
+  add column if not exists wacalls_paired_at timestamptz;
+
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_check;
 
 alter table public.channel_sessions
   add constraint channel_sessions_provider_check
-  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text]));
+  -- 'wacalls' (migration 0233, chamada de voz) somado aqui — UM bloco só por
+  -- constraint, doutrina de baseline (não duplicar drop+add por migration).
+  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'wacalls'::text]));
 
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_ref_check;
@@ -9393,7 +9402,8 @@ alter table public.channel_sessions
   add constraint channel_sessions_provider_ref_check check (
     (provider = 'waha'       and waha_session_name    is not null) or
     (provider = 'meta_cloud' and meta_phone_number_id is not null) or
-    (provider = 'zernio'     and zernio_account_id    is not null)
+    (provider = 'zernio'     and zernio_account_id    is not null) or
+    (provider = 'wacalls'    and wacalls_session_id    is not null)
   );
 
 comment on column public.channel_sessions.zernio_account_id is
@@ -10103,6 +10113,11 @@ alter table public.agent_inbox_items
     -- tratava `skipped` como sucesso, e a linha da fonte seguia dizendo `ready`.
     -- Irmão direto de `midia_nao_lida`: mesma chave, mesmo silêncio.
     'conhecimento_nao_indexado',
+    -- (migration 0206, spec 18) Chamada de voz WhatsApp (WaCalls) recebida que
+    -- nunca teve answered_at — o "chamou e ninguém atendeu" precisa de dono,
+    -- mesma razão de midia_nao_lida/conhecimento_nao_indexado. Entra NESTA
+    -- lista, não em bloco novo (#159, bloco único por constraint).
+    'voice_call_missed',
     'other'
   ));
 
