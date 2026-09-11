@@ -101,7 +101,20 @@ const PREFS_DO_SERVIDOR: NotifyPrefs = {
   mention: { in_app: true, push: true },
 };
 
-/** Sem `window`, `prefsPadrao()` devolve exatamente este valor — congelado aqui. */
+/**
+ * Sem `window`, `prefsPadrao()` devolve exatamente este valor — congelado aqui.
+ *
+ * É uma DUPLICATA deliberada, e ela não pode ser derivada: chamar
+ * `prefsPadrao()` no escopo do módulo leria o `localStorage` de verdade no
+ * navegador, que é justamente o que este valor existe para não fazer.
+ *
+ * Duplicata sem vigia diverge. Quem acrescentar uma categoria a
+ * `NOTIFY_UI_CATEGORIES`, ou mudar um padrão, muda `prefsPadrao()` e não muda
+ * este objeto — e o desfecho é a volta silenciosa do defeito que o PR #695
+ * consertou, ou pior: `getServerSnapshot` devolvendo um objeto sem a chave que
+ * o componente vai ler. O vigia é
+ * `tests/unit/prefs-do-servidor-nao-diverge-do-padrao.test.ts`.
+ */
 export function getPrefsSnapshotDoServidor(): NotifyPrefs {
   return PREFS_DO_SERVIDOR;
 }
