@@ -118,8 +118,8 @@ diga que dá para deixar vazia e cadastrar depois. Enquanto isso não muda, peç
    espere e recarregue. `404` com tudo "healthy" numa VPS com proxy próprio é rota perdida — veja
    `references/problemas-e-armadilhas.md`.
 2. Entrar com o e-mail e a senha do dono. **A verificação em duas etapas é opcional**: liga em
-   Configurações › Segurança. (O banner final do instalador ainda diz que ela é pedida no primeiro
-   acesso — era a regra antiga.)
+   Configurações › Segurança. (Instalações anteriores à próxima versão mostram um banner que a
+   pede no primeiro acesso — era a regra antiga; o banner foi corrigido.)
 3. Onboarding: nome da empresa, o que ela faz, fuso horário; depois o WhatsApp — deixe o app do
    celular **já aberto em Aparelhos conectados** antes de clicar, o QR vale só uns minutos.
 4. Agendar backup diário (o Supabase grátis **não** faz backup sozinho):
@@ -139,7 +139,7 @@ com o diagnóstico e o comando de cada um. Os mais frequentes:
 | app reiniciando em loop | falta uma chave no `.env` | `docker compose -f docker-compose.prod.yml logs app \| grep '\[env\]'` |
 | "Network unreachable" no banco | connection string Direct (IPv6) | trocar pela **Session pooler** |
 | "esqueci minha senha" com link para `localhost:3000` | Site URL do Supabase não configurado | `export SUPABASE_ACCESS_TOKEN=sbp_... && bash hostgator-setup-kit/marca-emails.sh` |
-| "Conectar novo WhatsApp" nunca conclui (v1.17.0) | nome de sessão maior que o WAHA aceita (issue #667) | conectar pelo onboarding, que usa nome curto |
+| "Conectar novo WhatsApp" nunca conclui (v1.17.0) | nome de sessão maior que o WAHA aceita (issue #667; corrigido na `main` em 10/set, PR #658) | conectar pelo onboarding, que usa nome curto — ou atualizar |
 | esqueci a senha / perdi o autenticador | — | `bash hostgator-setup-kit/reset-password.sh <email>` / `reset-mfa.sh <email>` |
 | "está tudo no ar?" | — | `bash hostgator-setup-kit/healthcheck.sh` |
 

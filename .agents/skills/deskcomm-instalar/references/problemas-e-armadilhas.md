@@ -96,9 +96,10 @@ idempotente e acha o usuário pelo e-mail.
 Confira que o número não está logado em outro computador e deixe o app do celular já aberto em
 Aparelhos conectados antes de clicar (o QR expira em minutos; há o botão "Gerar novo QR Code").
 
-**"Conectar novo WhatsApp" em Conexões nunca conclui, card fica "Parado"** (issue #667, v1.17.0):
-o nome de sessão gerado passa de 54 caracteres, e o WAHA recusa com 400. O **onboarding** usa um
-nome curto e funciona — conecte por ele. Conserto em andamento nos PRs #646/#658.
+**"Conectar novo WhatsApp" em Conexões nunca conclui, card fica "Parado"** (issue #667, na
+v1.17.0): o nome de sessão gerado passava de 54 caracteres, e o WAHA recusa com 400. O
+**onboarding** usa um nome curto e funciona — conecte por ele. Corrigido na `main` em 10/set
+(PR #658): vale para quem ainda está na v1.17.0 até atualizar para a versão seguinte.
 
 **WAHA responde 401.** A chave do WAHA vai para o contêiner com prefixo `sha512:`; o compose já faz
 isso. Se você editou `WAHA_API_KEY` à mão, rode o instalador de novo para regravar o par.
@@ -114,8 +115,8 @@ chave antes (OpenRouter é o caminho mais rápido de criar).
 
 **Telemetria ligada sem ninguém escolher** (issue #668): acontece quando o `.env` foi copiado do
 exemplo. Para desligar: `SENTRY_DSN=off` no `.env` e `docker compose -f docker-compose.prod.yml up -d`.
-O banner final do instalador ainda afirma "por padrão os erros são enviados" — o padrão da pergunta
-é **não** enviar.
+Instalações anteriores à próxima versão mostram um banner que afirma "por padrão os erros são
+enviados" — o padrão da pergunta é **não** enviar; o banner foi corrigido para dizer a escolha feita.
 
 **`--yes` instalou no canal `stable` em vez de uma versão.** O `.env` copiado do exemplo trouxe
 `APP_IMAGE=...:stable`. Confira `grep -E '^(APP|WORKER|SCHEDULER)_IMAGE=' .env`; para fixar uma
