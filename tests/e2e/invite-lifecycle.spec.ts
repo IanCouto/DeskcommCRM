@@ -519,8 +519,13 @@ test.describe("ciclo de vida do convite (ponta a ponta + adversarial)", () => {
     // Pedir o heading fazia o caso não poder passar nunca. Ele não chegou a
     // reprovar antes porque, na execução anterior, o caso 13 falhou e este foi
     // PULADO — a primeira vez que ele rodou de verdade foi a segunda.
+    // `p[role="alert"]`, e não `getByRole("alert")`: o Next injeta o PRÓPRIO
+    // anunciador de rota — `<div role="alert" aria-live="assertive"
+    // id="__next-route-announcer__">`, vazio — em toda página, e um
+    // `getByRole("alert")` casa os dois e reprova por strict mode. Medido no
+    // CI; o nosso é o `<p>` do `AcceptInviteForm`.
     await expect(
-      ip.getByRole("alert"),
+      ip.locator('p[role="alert"]'),
       "a tela não disse nada ao convidado: o aceite foi recusado em silêncio",
     ).toContainText(/revogado|vencido|não foi possível/i);
 
