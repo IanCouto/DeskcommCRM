@@ -211,7 +211,8 @@ async function handleCallStatus(
   // linha do tempo, e o aviso de chamada perdida sem o botão de ligar de volta —
   // o ramo "número que não casou com contato nenhum" deixaria de ser a exceção
   // que o comentário abaixo descreve e passaria a ser TODA chamada.
-  // `lib/waha/ingest.ts:199` faz o mesmo `"+" + digitos` ao GRAVAR; aqui é a
+  // A ingestão do canal de mensagem faz o mesmo `"+" + digitos` ao GRAVAR;
+  // aqui é a
   // ponta que LÊ. O `wa_lid` continua cru: é identificador do WhatsApp, não
   // telefone.
   const { rows } = await pool.query<{ contact_id: string | null }>(
