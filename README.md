@@ -133,6 +133,11 @@ Jogue a pasta `hostgator-setup-kit/` no chat do **Claude Code** rodando dentro d
 
 Saiu versão nova? Há dois caminhos, e o primeiro **não exige terminal**.
 
+Com o repositório clonado, o **guia de instalação** já vem dentro — `.agents/skills/deskcomm-instalar/` —
+e carrega sozinho no Claude Code, Codex, Cursor, OpenCode ou Antigravity aberto na pasta. Diga só
+*"quero instalar o CRM na minha VPS"*. Há guias também para montar um cliente por nicho, analisar
+métricas, afinar o prompt do agente e contribuir (`AGENTS.md`, seção "Guias do assistente").
+
 ### Pela tela (recomendado)
 
 Quando existe versão nova, o rodapé do menu lateral acende **"Nova versão"** — só pro dono do
