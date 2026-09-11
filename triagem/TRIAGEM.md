@@ -2059,7 +2059,33 @@ Cada um destes foi cometido de verdade nesta casa, e é por isso que estão escr
     escrito na linha** — porque quem ler `getByText("Pendente")` daqui a um mês não tem como
     adivinhar que a causa mora no endereço semeado trinta linhas acima.
 
-50. **O mecanismo que "falhou" pode só precisar de mais uma rodada — sonde a função antes de acusá-la.**
+50. **O `origin` é do repositório, não do worktree — e trocá-lo quebra todas as sessões.**
+    Um `git push` falhou com `fatal: repository 'https://github.com/alguem/DeskcommCRM.git/' not
+    found`: o remoto tinha sido apontado para o **endereço de exemplo** da documentação.
+
+    `[remote "origin"]` mora no `.git/config` do repositório PRINCIPAL, e worktree não tem config
+    próprio de remoto. Um `set-url` numa sessão quebra `fetch` e `push` de **todas as outras** ao
+    mesmo tempo — inclusive as que não fizeram nada —, e o erro lê como problema de credencial.
+
+    É irmão do stash compartilhado: o worktree isola a ÁRVORE, não a CONFIGURAÇÃO.
+
+    **A sonda, antes de mexer em token ou em `gh auth`:** `git remote get-url origin`. E, antes de
+    restaurar, PROVE qual é a certa em vez de reconstruir de memória:
+
+    ```bash
+    curl -s -o /dev/null -w "%{http_code}\n" https://github.com/<candidata>/<repo>
+    gh repo view --json nameWithOwner --jq .nameWithOwner
+    ```
+
+51. **O Next põe um `role="alert"` em toda página, e ele ganha do seu.**
+    `<div role="alert" aria-live="assertive" id="__next-route-announcer__">`, vazio, existe em
+    QUALQUER rota. Um `getByRole("alert")` casa os dois e reprova por strict mode — com o seu
+    alerta visível e correto na tela, o que faz o vermelho parecer defeito de produto.
+
+    Peça o elemento (`p[role="alert"]`), não só o papel. Mesma família do modo 49: o alvo
+    ambíguo não é culpa da asserção nem da tela, é de um terceiro que ninguém escreveu.
+
+52. **O mecanismo que "falhou" pode só precisar de mais uma rodada — sonde a função antes de acusá-la.**
     Um invariante do PR #657 reprovava com o enrollment parado em `active`, e a hipótese —
     do autor e minha — era que `fn_claim_due_followup_enrollments` estivesse falhando. A hipótese
     era boa: o motor **engole falha de claim**, e o comentário dele diz que `claimed: 0` é
