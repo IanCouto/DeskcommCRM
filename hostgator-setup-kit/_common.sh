@@ -795,7 +795,23 @@ setup_event_log_drain_cron() {
   if crontab -l 2>/dev/null | grep -qF -e "$url_drain"; then first_time=0; fi
 
   local cron_line="* * * * * curl -fsS -H \"Authorization: Bearer ${secret}\" \"${url_drain}\" >/dev/null 2>&1 ${marcador}"
-  ( crontab -l 2>/dev/null | cron_merge "$marcador" "$url_drain" "$cron_line" ) | crontab -
+  # ⚠️ `|| true` OBRIGATÓRIO, e não é defensividade: `crontab -l` sai com status
+  # 1 (sem stdout, só um aviso no stderr) quando o usuário NUNCA teve crontab —
+  # o caso NORMAL de uma VPS recém-provisionada, que é o caso normal de quem
+  # instala este produto. Sob `set -o pipefail` (linha 3 deste arquivo, e
+  # `install.sh:12`) esse 1 vaza pelo pipe mesmo com os estágios seguintes
+  # bem-sucedidos — `false | true` também sai 1 —, e o `set -e` mata o
+  # instalador AQUI, no bloco 11, DEPOIS de a linha do cron já ter sido gravada.
+  # O dono vê o script morrer sem mensagem, numa instalação que na verdade
+  # funcionou.
+  #
+  # Reproduzido com um dublê de `crontab` que sai 1 no `-l`: sem o `|| true`, a
+  # linha seguinte a este bloco nunca é alcançada. Vigiado por
+  # `tests/shell/cron-sem-crontab-previo.test.sh`.
+  #
+  # Stdin vazio para o `cron_merge` é exatamente o que "sem crontab prévio" deve
+  # produzir — o comportamento não muda, só o status.
+  ( { crontab -l 2>/dev/null || true; } | cron_merge "$marcador" "$url_drain" "$cron_line" ) | crontab -
   c_grn "✓ automações ativas (cron do event-log-drain, a cada minuto)"
 
   if [ "$first_time" = 1 ]; then
@@ -834,7 +850,9 @@ setup_update_agent_cron() {
   local legado="cd ${PROJECT_DIR} && bash hostgator-setup-kit/agent.sh"
   local marcador; marcador="$(cron_tag agent)"
   local cron_line="*/5 * * * * ${legado} >/dev/null 2>&1 ${marcador}"
-  ( crontab -l 2>/dev/null | cron_merge "$marcador" "$legado" "$cron_line" ) | crontab -
+  # Mesmo motivo do drain acima, e é por isso que o conserto é nos DOIS: a
+  # primeira instalação passa pelos dois blocos na mesma rodada.
+  ( { crontab -l 2>/dev/null || true; } | cron_merge "$marcador" "$legado" "$cron_line" ) | crontab -
   c_grn "✓ atualização pela tela ativa (agente a cada 5 minutos)"
 }
 
