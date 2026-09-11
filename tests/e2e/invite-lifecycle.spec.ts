@@ -506,7 +506,39 @@ test.describe("ciclo de vida do convite (ponta a ponta + adversarial)", () => {
       .toBe(true);
     await ip.goto(new URL(linkAntes).pathname);
     await ip.getByRole("button", { name: /Aceitar convite/i }).click();
-    await expect(ip.getByRole("heading", { name: /inválido ou expirado/i })).toBeVisible();
+
+    // ⚠️ ALERTA, não HEADING — e a diferença não é de estilo, é de QUEM recusa.
+    //
+    // O heading "Convite inválido ou expirado" é do SERVIDOR, e sai só quando
+    // `verifyInviteToken` devolve `null`: token adulterado ou vencido. Aqui o
+    // token está íntegro e dentro das 24h — o que o invalidou foi a LINHA
+    // (`team_invites.revoked_at`), e essa recusa acontece na server action, já
+    // com a página desenhada. Ela chega pelo `<p role="alert">` do
+    // `AcceptInviteForm`.
+    //
+    // Pedir o heading fazia o caso não poder passar nunca. Ele não chegou a
+    // reprovar antes porque, na execução anterior, o caso 13 falhou e este foi
+    // PULADO — a primeira vez que ele rodou de verdade foi a segunda.
+    await expect(
+      ip.getByRole("alert"),
+      "a tela não disse nada ao convidado: o aceite foi recusado em silêncio",
+    ).toContainText(/revogado|vencido|não foi possível/i);
+
+    // E o outro lado, que é o que o caso existe para provar: NÃO entrou.
+    // Sem isto, um alerta visível junto com um aceite bem-sucedido passaria.
+    await expect(ip).toHaveURL(/\/team\/accept-invite\//);
+    expect(
+      (
+        await svc
+          .from("user_organizations")
+          .select("user_id")
+          .eq("organization_id", inv.org_id)
+          .eq("user_id", (await svc.auth.admin.listUsers()).data.users.find(
+            (u) => (u.email ?? "").toLowerCase() === FRESH_EMAIL.toLowerCase(),
+          )?.id ?? "00000000-0000-4000-8000-000000000000")
+      ).data ?? [],
+      "o convite revogado criou vínculo mesmo assim",
+    ).toEqual([]);
     await inviteeCtx.close();
   });
 });
