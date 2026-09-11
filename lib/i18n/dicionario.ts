@@ -928,6 +928,18 @@ export const DICIONARIO: Traducoes = {
   Custa: { es: "Cuesta" },
   ". O modelo usado se escolhe em": { es: ". El modelo usado se elige en" },
   "Provedores de IA": { es: "Proveedores de IA" },
+  "Modelo padrão": { es: "Modelo predeterminado" },
+  "Vale em todo ponto que você não configurou individualmente — hoje,": {
+    es: "Vale en todo punto que no configuraste individualmente — hoy,",
+  },
+  "Trocar aqui muda todos eles de uma vez.": {
+    es: "Cambiar aquí los cambia todos de una vez.",
+  },
+  "Salvar padrão": { es: "Guardar predeterminado" },
+  "O padrão agora é": { es: "El predeterminado ahora es" },
+  "pontos precisam de um modelo especialista (embedding ou áudio) e não seguem este padrão — configure cada um abaixo:": {
+    es: "puntos necesitan un modelo especialista (embedding o audio) y no siguen este predeterminado — configurá cada uno abajo:",
+  },
   "Antes de cada mensagem sair": { es: "Antes de que cada mensaje salga" },
   "O assistente escreve, e o sistema confere. São": {
     es: "El asistente escribe, y el sistema revisa. Son",
