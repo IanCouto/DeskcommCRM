@@ -871,6 +871,14 @@ documentado. Então: **se o PR muda comportamento e não traz fragmento, escreva
 própria, creditando o autor — é reconciliação mecânica (passe 8), não decisão de projeto. Só volta
 como pergunta se você não souber dizer o que muda para quem opera.
 
+> **⚠️ O negrito do fragmento cabe numa linha só — mesmo que ela passe das 80 colunas.**
+> `fragmentos-de-release.test.ts` reprova `**` que abre numa linha e fecha na outra, porque os
+> asteriscos chegam **literais** à tela de quem lê o CHANGELOG. Quem escreve prosa quebrando a ~80
+> colunas por hábito acerta isso por acidente na maioria das vezes e erra quando a quebra cai no
+> meio da ênfase — aconteceu **duas vezes em 11/09/2026**, em fragmentos diferentes, com o mesmo
+> `verify` vermelho e a mesma linha de erro. O gate só olha o `.changes/` do PR, então o vermelho
+> chega junto com a suíte inteira e parece defeito de código.
+
 O impacto se **mede**, não se chuta. A pergunta é uma: *o operador precisa fazer alguma coisa?*
 Variável nova é o caso clássico — abra `lib/env.ts` e veja se ela é `required()` ou
 `optional().default(...)`. Obrigatória sem default é `exige_acao`, e o fragmento **precisa** trazer o
