@@ -51,7 +51,12 @@ export async function POST(req: Request): Promise<Response> {
   // instante, com sessão viva e escolha `false` — e é nesse instante que
   // alguém clicaria "Chamar". O desligar despareia, mas a ordem dos efeitos
   // não é uma coisa em que vale a pena confiar num caminho que expõe a conta.
-  const vozDesligada = await exigirVozLigada(supabase, activeOrg.orgId, { requestId });
+  // `instalacaoOferece: true` porque o `getWacallsClient()` acima já provou
+  // o fato e já devolveu 503 se fosse falso — a guarda não o relê pelo env.
+  const vozDesligada = await exigirVozLigada(supabase, activeOrg.orgId, {
+    requestId,
+    instalacaoOferece: true,
+  });
   if (vozDesligada) return vozDesligada;
 
   const session = await resolveWacallsSession(supabase, activeOrg.orgId);

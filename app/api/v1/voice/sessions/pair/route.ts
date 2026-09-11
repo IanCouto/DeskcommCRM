@@ -65,7 +65,12 @@ export async function POST(): Promise<Response> {
   // O que NÃO ganha esta guarda, de propósito: `DELETE /sessions` (desparear),
   // `reject` e `hangup`. A porta de saída nunca depende do interruptor — é a
   // mesma razão escrita no cabeçalho da rota de DELETE.
-  const vozDesligada = await exigirVozLigada(supabase, activeOrg.orgId, { requestId });
+  // `instalacaoOferece: true` porque o `getWacallsClient()` acima já provou
+  // o fato e já devolveu 503 se fosse falso — a guarda não o relê pelo env.
+  const vozDesligada = await exigirVozLigada(supabase, activeOrg.orgId, {
+    requestId,
+    instalacaoOferece: true,
+  });
   if (vozDesligada) return vozDesligada;
 
   const { data: existingRaw } = await supabase
