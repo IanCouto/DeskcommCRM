@@ -4,10 +4,11 @@ secao: adicionado
 titulo: O modelo de IA padrão da organização passa a ter tela
 ---
 
-O padrão de IA da organização — o modelo que vale em **todo ponto que não tem
-escolha própria**, o que numa instalação nova são 24 dos 25 — existia no banco e
-já era usado para decidir cada ponto, mas não aparecia em lugar nenhum. Não dava
-para ver qual era, e muito menos trocar sem mexer no banco à mão.
+O padrão de IA da organização decide o modelo de **todo ponto que não tem escolha própria** — numa instalação nova, 24 dos 25.
+
+Ele existia no banco e já era usado para decidir cada ponto, mas não aparecia em
+lugar nenhum: não dava para ver qual era, e muito menos trocar sem mexer no
+banco à mão.
 
 Agora ele aparece em **Agente de IA › Provedores**, junto com os pontos, e pode
 ser trocado ali. A troca confere se o modelo existe no catálogo daquele provedor

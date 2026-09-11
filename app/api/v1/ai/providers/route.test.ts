@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { AuthUser } from "@/lib/auth/types";
 
@@ -19,10 +20,24 @@ import type { AuthUser } from "@/lib/auth/types";
  * COMPARTILHADO — `branding`, `security` e o que mais vier moram nele. Escrever
  * `{ llm: ... }` por cima apaga a marca da instalação e a política de MFA em
  * silêncio, e o sintoma aparece dias depois, longe daqui.
+ *
+ * ═══ E O TERCEIRO CASO, QUE UM TESTE DE UNIDADE NÃO PODE VER SOZINHO ═══
+ *
+ * A RLS de `organizations` só deixa ESCREVER platform admin. Com o cliente de
+ * sessão, o `update` casa ZERO linhas para o `admin` do próprio tenant — e o
+ * PostgREST devolve **sucesso**, sem erro: a tela diria "salvo" e nada teria
+ * sido gravado. Medido: `admin` da org → 0 linhas; cliente admin → 1.
+ *
+ * Nenhum mock enxerga isso, porque o stub abaixo sempre dá certo. Por isso o
+ * `createClient` e o `createAdminClient` são dublês DIFERENTES aqui, e há um
+ * caso que afirma qual dos dois escreveu — trocar de volta reprova, mesmo com
+ * o comportamento visível idêntico. A varredura por classe vive em
+ * `tests/unit/escrita-em-organizations-usa-cliente-admin.test.ts`.
  */
 
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async () => null) }));
 
@@ -113,13 +128,20 @@ function requisicao(corpo: unknown) {
 
 describe("PATCH /api/v1/ai/providers — padrão da organização", () => {
   let estado: EstadoDoBanco;
+  let estadoDeSessao: EstadoDoBanco;
 
   beforeEach(() => {
     vi.clearAllMocks();
     estado = { atualizacao: null, modeloExiste: true };
+    estadoDeSessao = { atualizacao: null, modeloExiste: true };
     vi.mocked(requireSupportWrite).mockResolvedValue(null);
     vi.mocked(createClient).mockResolvedValue(
-      stubDoBanco(estado) as unknown as Awaited<ReturnType<typeof createClient>>,
+      stubDoBanco(estadoDeSessao) as unknown as Awaited<ReturnType<typeof createClient>>,
+    );
+    // Dublê SEPARADO de propósito: é `estado` (o do admin) que as asserções
+    // leem, então uma escrita pelo cliente de sessão aparece como ausência.
+    vi.mocked(createAdminClient).mockReturnValue(
+      stubDoBanco(estado) as unknown as ReturnType<typeof createAdminClient>,
     );
     autorizadoComoAdmin();
   });
@@ -138,6 +160,20 @@ describe("PATCH /api/v1/ai/providers — padrão da organização", () => {
     expect(settings.security).toEqual(SETTINGS_EXISTENTES.security);
   });
 
+  it("escreve pelo CLIENTE ADMIN, não pelo de sessão", async () => {
+    // A RLS de `organizations` só deixa escrever platform admin: pelo cliente
+    // de sessão isto casaria zero linhas e o PostgREST devolveria sucesso.
+    const { PATCH } = await import("./route");
+    await PATCH(requisicao({ provider: "openai", default_model: "gpt-5.4-mini" }));
+
+    expect(estado.atualizacao, "o cliente admin não gravou").not.toBeNull();
+    expect(
+      estadoDeSessao.atualizacao,
+      "o cliente de SESSÃO gravou — com a RLS real isto casaria zero linhas e " +
+        "voltaria como sucesso, com a tela dizendo 'salvo'",
+    ).toBeNull();
+  });
+
   it("recusa provedor que esta instalação não suporta", async () => {
     const { PATCH } = await import("./route");
     const res = await PATCH(requisicao({ provider: "foobar", default_model: "qualquer" }));
@@ -147,7 +183,10 @@ describe("PATCH /api/v1/ai/providers — padrão da organização", () => {
   });
 
   it("recusa modelo que não está no catálogo do provedor", async () => {
-    estado.modeloExiste = false;
+    // `ai_models` é catálogo global e é lido pelo cliente de SESSÃO — só a
+    // escrita em `organizations` precisa do admin. Por isso a bandeira vai no
+    // dublê de sessão, e não no do admin.
+    estadoDeSessao.modeloExiste = false;
     const { PATCH } = await import("./route");
     const res = await PATCH(requisicao({ provider: "openai", default_model: "modelo-que-nao-existe" }));
 
