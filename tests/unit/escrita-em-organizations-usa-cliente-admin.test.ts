@@ -125,13 +125,18 @@ function escritasEmOrganizations(caminho: string): Achado[] {
       MUTACOES.has(no.expression.name.text)
     ) {
       const alvo = no.expression.expression;
+      // `arguments[0]` sai do índice como `Expression | undefined` sob
+      // `noUncheckedIndexedAccess`, e o `length === 1` do lado não estreita o
+      // tipo — daí o `const` antes do guard, em vez do índice repetido.
+      const argumentoDoFrom = ts.isCallExpression(alvo) ? alvo.arguments[0] : undefined;
       if (
         ts.isCallExpression(alvo) &&
         ts.isPropertyAccessExpression(alvo.expression) &&
         alvo.expression.name.text === "from" &&
         alvo.arguments.length === 1 &&
-        ts.isStringLiteral(alvo.arguments[0]) &&
-        alvo.arguments[0].text === "organizations"
+        argumentoDoFrom !== undefined &&
+        ts.isStringLiteral(argumentoDoFrom) &&
+        argumentoDoFrom.text === "organizations"
       ) {
         const raiz = raizDaCadeia(alvo.expression.expression);
         if (raiz !== null && !admins.has(raiz)) {
