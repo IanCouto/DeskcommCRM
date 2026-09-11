@@ -1,6 +1,20 @@
 import path from "node:path";
 
 /**
+ * O MESMO tratamento para quem já tem o caminho na mão — relativo, ou vindo de
+ * um `join` que não passou por `path.relative`.
+ *
+ * Existe porque `relativoEmBarraNormal` só cobre metade dos chamadores: um
+ * `readdirSync` recursivo monta `app\api\v1\...` a partir de um diretório
+ * RELATIVO, e ali não há raiz para subtrair. Sem esta porta, quem tem esse
+ * caminho escreve o `.split(path.sep).join("/")` à mão — que é a cópia que
+ * este arquivo existe para não ter.
+ */
+export function emBarraNormal(caminho: string): string {
+  return caminho.split(path.sep).join("/");
+}
+
+/**
  * Caminho relativo à raiz, SEMPRE em barra normal — nunca a do sistema de
  * arquivos.
  *
@@ -21,20 +35,6 @@ import path from "node:path";
  * `varrer-codigo.ts` vive lá: quatro cópias desta linha é a garantia de que
  * uma delas vai divergir.
  */
-/**
- * O MESMO tratamento para quem já tem o caminho na mão — relativo, ou vindo de
- * um `join` que não passou por `path.relative`.
- *
- * Existe porque `relativoEmBarraNormal` só cobre metade dos chamadores: um
- * `readdirSync` recursivo monta `app\api\v1\...` a partir de um diretório
- * RELATIVO, e ali não há raiz para subtrair. Sem esta porta, quem tem esse
- * caminho escreve o `.split(path.sep).join("/")` à mão — que é a cópia que
- * este arquivo existe para não ter.
- */
-export function emBarraNormal(caminho: string): string {
-  return caminho.split(path.sep).join("/");
-}
-
 export function relativoEmBarraNormal(raiz: string, absoluto: string): string {
   return emBarraNormal(path.relative(raiz, absoluto));
 }
