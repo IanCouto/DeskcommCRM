@@ -904,6 +904,28 @@ produziria uma seção duplicada, ou um número que já saiu.
 gh pr diff <n> | grep -E '^\+## \[[0-9]+\.[0-9]+\.[0-9]+\]'   # vazio é o esperado
 ```
 
+### A sonda da release se CALIBRA na versão anterior, antes de valer na nova
+
+A release só terminou quando as três imagens estão no registro e a tag `stable` aponta para elas —
+e isso se confere por HTTP, não pelo status verde do robô (passe 12). Só que a sonda que confere
+também erra, e o erro dela lê como "a release não saiu".
+
+**Rode a sonda contra a versão ANTERIOR primeiro.** Ela tem de dizer "tudo no ar". Em 11/09/2026
+essa calibração pegou dois defeitos numa sonda recém-escrita, os dois invisíveis de outro jeito:
+
+| o que a sonda fez | o que parecia | o que era |
+|---|---|---|
+| `gh release view vX --json isLatest` | "release vX não existe" | `isLatest` **só existe em `gh release list`**; o `Unknown JSON field` foi engolido por um `\|\|` |
+| `echo "== \`stable\` aponta… =="` | `stable: comando não encontrado` | crase dentro de aspas DUPLAS executa, mesmo o heredoc sendo `<<'SH'` |
+
+O segundo é o [[feedback_heredoc_sem_aspas_executa_a_prosa]] pelo avesso: o heredoc citado preservou
+a crase **literal no arquivo**, e quem a executou foi o bash ao RODAR o script. Citar o heredoc
+protege a escrita, não a execução.
+
+E a tag de versão deste projeto **não tem o prefixo `v` no registro de imagens** (`1.19.0`), embora
+a tag do git tenha (`v1.19.0`). Uma sonda que peça `v1.19.0` ao GHCR devolve 404 para uma imagem que
+está lá — foi o primeiro resultado que eu obtive, e ele lê como "não publicou".
+
 ### Depois do merge, a versão sai — e isso não é opcional
 
 O merge é do mantenedor (Fronteira). Assim que ele acontecer, **a versão precisa sair**, ou o passe
