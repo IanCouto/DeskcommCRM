@@ -136,10 +136,7 @@ test.describe("chamada de voz — o estado em que toda instalação começa", ()
 
     // ── A TELA ─────────────────────────────────────────────────────────────
     await page.goto("/app/settings/security");
-    const painel = page
-      .locator("div")
-      .filter({ hasText: /^Chamada de voz pelo WhatsApp/ })
-      .first();
+    const painel = page.getByTestId("painel-voz");
     await expect(painel).toBeVisible();
 
     await expect(
@@ -201,13 +198,21 @@ test.describe("chamada de voz — o estado em que toda instalação começa", ()
     await entrarComoAdmin(page);
 
     await page.goto("/app");
-    const porta = page.getByRole("link", { name: /Configurações|Ajustes/ }).first();
+
+    // Locator por HREF, não por rótulo: o texto do menu é matéria de produto e
+    // pode mudar; o endereço é o contrato. Um spec que casa rótulo reprova
+    // quando alguém renomeia "Configurações", e isso não é o defeito que ele
+    // existe para pegar.
+    const porta = page.locator('a[href="/app/settings"]').first();
     await expect(porta, "não há porta para Configurações na navegação").toBeVisible();
     await porta.click();
+    await page.waitForURL(/\/app\/settings(\/)?$/);
 
-    await page.getByRole("link", { name: /Segurança/ }).first().click();
+    const paraSeguranca = page.locator('a[href="/app/settings/security"]').first();
+    await expect(paraSeguranca, "a tela de Segurança não está listada em Configurações").toBeVisible();
+    await paraSeguranca.click();
     await page.waitForURL(/\/app\/settings\/security/);
 
-    await expect(page.getByText(/Chamada de voz pelo WhatsApp/)).toBeVisible();
+    await expect(page.getByTestId("painel-voz")).toBeVisible();
   });
 });
