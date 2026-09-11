@@ -185,6 +185,63 @@ export const metaCloudAdapter: ChannelAdapter = {
     unknownError: "meta_unknown",
   },
 
+  async fetchInboundMedia(input): Promise<{ buffer: Buffer; mime: string }> {
+    const creds = await resolveMetaCreds(createAdminClient(), {
+      organizationId: input.organizationId,
+      phoneNumberId: input.sessionRef,
+    });
+    if (!creds) {
+      throw new Error("meta_not_configured: sem credencial para baixar a mídia.");
+    }
+
+    const prefix = "meta-media:";
+    if (!input.url.startsWith(prefix)) {
+      throw new Error("meta_media_invalid_ref: ponte não reconhecido.");
+    }
+    const mediaId = input.url.slice(prefix.length);
+    if (!/^[A-Za-z0-9._~-]+$/.test(mediaId)) {
+      throw new Error("meta_media_invalid_ref: media_id inválido.");
+    }
+
+    const headers = { Authorization: `Bearer ${creds.token}` };
+    const lookup = await fetch(
+      `https://graph.facebook.com/${creds.graphVersion}/${encodeURIComponent(mediaId)}`,
+      { headers, signal: AbortSignal.timeout(15_000) },
+    );
+    const metadata = (await lookup.json().catch(() => ({}))) as {
+      url?: string;
+      mime_type?: string;
+      error?: { code?: number; message?: string };
+    };
+    if (!lookup.ok || metadata.error || !metadata.url) {
+      const detalhe = metadata.error?.message ?? lookup.statusText ?? "sem URL";
+      throw new Error(
+        `meta_media_lookup_failed: ${metadata.error?.code ?? lookup.status} ${detalhe}`.trim(),
+      );
+    }
+
+    const mediaUrl = new URL(metadata.url);
+    if (mediaUrl.protocol !== "https:" || mediaUrl.hostname !== "lookaside.fbsbx.com") {
+      throw new Error("meta_media_lookup_failed: host de mídia inesperado.");
+    }
+
+    const download = await fetch(mediaUrl.toString(), {
+      headers,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!download.ok) {
+      throw new Error(`meta_media_download_failed: ${download.status} ${download.statusText}`.trim());
+    }
+
+    const buffer = Buffer.from(await download.arrayBuffer());
+    const mime =
+      download.headers.get("content-type")?.split(";")[0]?.trim() ||
+      metadata.mime_type ||
+      input.hintMime ||
+      "application/octet-stream";
+    return { buffer, mime };
+  },
+
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
     // Sessão primeiro, env como fallback. O `sessionRef` do canal oficial É o
     // `phone_number_id` (ver `resolveSessionRef`), então ele é a chave da busca.
