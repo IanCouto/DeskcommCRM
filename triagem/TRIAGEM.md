@@ -1983,16 +1983,47 @@ Cada um destes foi cometido de verdade nesta casa, e é por isso que estão escr
     próxima leva, nunca depois — ele é o que entrega, e os outros só preparam.
 
 48. **A sonda de status do monitor casa o nome errado e declara verde.** Um filtro
-    `test("^(verify|invariants|e2e|build-and-size)$")` **não casa `e2e-parte`** — o job que de fato
-    roda o Playwright. Em 11/09/2026 um monitor anunciou `#707 VERDE` com duas das três partes do
-    e2e ainda pendentes, porque o conjunto que ele mediu não as continha.
+    `test("^(verify|invariants|e2e|build-and-size|imagens-ok)$")` parece a lista exata dos cinco
+    checks obrigatórios. Ele **não casa quase nada do que existe**, e o nome dos jobs é a razão —
+    medido em 11/09/2026 com `gh pr checks <N> --json name,bucket`:
+
+    | o que a `branch protection` exige | o que aparece em `gh pr checks` |
+    |---|---|
+    | `e2e` | `e2e-parte (1)`, `e2e-parte (2)`, `e2e-parte (3)` — com espaço e parênteses |
+    | `imagens-ok` | `imagem-do-app-sobe` e três `build-and-push (…, Dockerfile…, …)` |
+    | `verify`, `invariants`, `build-and-size` | iguais |
+
+    Os contextos exigidos são **agregadores**, e só aparecem quando as partes fecham. Um filtro de
+    igualdade exata sobre esses cinco nomes pegou **três** checks de dezessete, e um monitor
+    anunciou `#707 VERDE` com duas das três partes do e2e ainda rodando.
 
     É o modo de falha 7 (controle positivo) aplicado a filtro de nome: **uma sonda que não encontra
-    o job é indistinguível de um job que passou.** O controle é contar: se o filtro devolve menos
-    checks obrigatórios do que a `branch protection` exige, ele está cego — não verde. Prefira
-    `length < 6 then ""` a `all(.bucket=="pass")` sobre um conjunto de tamanho não conferido.
+    o job é indistinguível de um job que passou.** Não enumere nomes — pergunte pelo estado:
 
-49. **O mecanismo que "falhou" pode só precisar de mais uma rodada — sonde a função antes de acusá-la.**
+    ```bash
+    gh pr checks <N> --json name,bucket --jq '
+      [.[]|select(.bucket!="skipping")|select(.name|test("^Vercel")|not)]
+      | if   (any(.bucket=="fail"))    then "VERMELHO"
+        elif (any(.bucket=="pending")) then "AINDA RODANDO"
+        else "VERDE" end'
+    ```
+
+    A sonda corrigida pegou, no primeiro ciclo, um `e2e-parte (1)` vermelho que a anterior tinha
+    declarado verde.
+
+49. **O valor do fixture contém a palavra que a asserção procura.** Um e-mail semeado como
+    `convite.pendente.<uuid>@deskcomm.test` fez `row.getByText("Pendente")` casar **duas** coisas na
+    mesma linha — a célula do e-mail e o selo de status —, e o Playwright reprovou por strict mode.
+
+    O defeito não está na asserção nem na tela: está no **fixture**, que embute o vocabulário que o
+    teste usa para afirmar. É a família de [[feedback_mesmo_texto_significados_opostos]] com os
+    papéis trocados — aqui o texto igual é acidente do dado, não do produto.
+
+    Conserto: `{ exact: true }` (o selo diz exatamente a palavra; o endereço, não), **com o motivo
+    escrito na linha** — porque quem ler `getByText("Pendente")` daqui a um mês não tem como
+    adivinhar que a causa mora no endereço semeado trinta linhas acima.
+
+50. **O mecanismo que "falhou" pode só precisar de mais uma rodada — sonde a função antes de acusá-la.**
     Um invariante do PR #657 reprovava com o enrollment parado em `active`, e a hipótese —
     do autor e minha — era que `fn_claim_due_followup_enrollments` estivesse falhando. A hipótese
     era boa: o motor **engole falha de claim**, e o comentário dele diz que `claimed: 0` é
