@@ -1342,6 +1342,13 @@ gen_b64() { openssl rand -base64 32; }
 : "${WAHA_HMAC_SECRET:=$(gen_hex)}"
 : "${SRH_TOKEN:=$(gen_hex)}"
 : "${WAHA_API_KEY:=$(gen_hex)}"
+# Chamada de voz (spec 18). Gerados SEMPRE, mesmo com a feature desligada: o
+# serviço não sobe sem admin, e pedir ao dono que invente três segredos no dia
+# em que ele quiser ligar a voz é o "edite o .env à mão" que a doutrina de
+# packaging proíbe. Gerar não liga nada — quem liga é COMPOSE_PROFILES.
+: "${WACALLS_ADMIN_USER:=deskcomm}"
+: "${WACALLS_ADMIN_PASSWORD:=$(gen_hex)}"
+: "${WACALLS_API_TOKEN:=$(gen_hex)}"
 # O container WAHA espera o HASH SHA512 hex; o app envia o plaintext no X-Api-Key.
 WAHA_API_KEY_SHA512="$(printf '%s' "$WAHA_API_KEY" | openssl dgst -sha512 -hex | awk '{print $NF}')"
 UPSTASH_REDIS_REST_TOKEN="$SRH_TOKEN"
@@ -1661,6 +1668,16 @@ esac
   envq WAHA_API_KEY "$WAHA_API_KEY"
   envq WAHA_API_KEY_SHA512 "$WAHA_API_KEY_SHA512"
   envq WAHA_HMAC_SECRET "$WAHA_HMAC_SECRET"
+  printf '# Chamada de voz WhatsApp (spec 18) — DESLIGADA. Ligá-la vincula um SEGUNDO\n'
+  printf '# aparelho ao mesmo número que já atende, por um caminho que não é o oficial:\n'
+  printf '# o risco é a CONTA ser bloqueada. Para ligar: COMPOSE_PROFILES=voz e\n'
+  printf '# WACALLS_API_BASE_URL=http://wacalls:8080, depois ./update.sh e, na tela,\n'
+  printf '# Configurações › Segurança. Vazio = o serviço nem é criado.\n'
+  envq COMPOSE_PROFILES "${COMPOSE_PROFILES:-}"
+  envq WACALLS_API_BASE_URL "${WACALLS_API_BASE_URL:-}"
+  envq WACALLS_ADMIN_USER "$WACALLS_ADMIN_USER"
+  envq WACALLS_ADMIN_PASSWORD "$WACALLS_ADMIN_PASSWORD"
+  envq WACALLS_API_TOKEN "$WACALLS_API_TOKEN"
   printf '# "true" exige assinatura em todo webhook do WAHA. O WAHA Core NÃO assina,\n'
   printf '# então ligar isto sem um WAHA Plus (ou proxy que assine) para a ingestão\n'
   printf '# de mensagens. A rota global já não é publicada na internet (ver Caddyfile).\n'
