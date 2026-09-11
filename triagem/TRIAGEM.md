@@ -871,13 +871,19 @@ documentado. Então: **se o PR muda comportamento e não traz fragmento, escreva
 própria, creditando o autor — é reconciliação mecânica (passe 8), não decisão de projeto. Só volta
 como pergunta se você não souber dizer o que muda para quem opera.
 
-> **⚠️ O negrito do fragmento cabe numa linha só — mesmo que ela passe das 80 colunas.**
+> **⚠️ NÃO QUEBRE LINHA DENTRO DE PARÁGRAFO DE FRAGMENTO.** Escreva cada parágrafo do `.changes/`
+> numa linha só, por mais longa que fique — o Markdown renderiza igual.
+>
 > `fragmentos-de-release.test.ts` reprova `**` que abre numa linha e fecha na outra, porque os
 > asteriscos chegam **literais** à tela de quem lê o CHANGELOG. Quem escreve prosa quebrando a ~80
-> colunas por hábito acerta isso por acidente na maioria das vezes e erra quando a quebra cai no
-> meio da ênfase — aconteceu **duas vezes em 11/09/2026**, em fragmentos diferentes, com o mesmo
-> `verify` vermelho e a mesma linha de erro. O gate só olha o `.changes/` do PR, então o vermelho
-> chega junto com a suíte inteira e parece defeito de código.
+> colunas por hábito acerta por acidente na maioria das vezes e erra quando a quebra cai no meio da
+> ênfase. Aconteceu **três vezes em 11/09/2026**, em três fragmentos diferentes — a terceira
+> **depois** de este aviso já estar escrito dizendo "o negrito cabe numa linha só".
+>
+> Foi por isso que a regra mudou de forma: "tome cuidado com o negrito" é disciplina, e disciplina
+> falhou três vezes no mesmo dia. "Não quebre linha nenhuma" é mecânico — não há como executá-la
+> pela metade. O gate só olha o `.changes/` do PR, então o vermelho chega junto com a suíte inteira
+> e parece defeito de código.
 
 O impacto se **mede**, não se chuta. A pergunta é uma: *o operador precisa fazer alguma coisa?*
 Variável nova é o caso clássico — abra `lib/env.ts` e veja se ela é `required()` ou
