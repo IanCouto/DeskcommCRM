@@ -360,6 +360,22 @@ export function createPgAdminClient(pool: pg.Pool): TurnBridgeAdminClient {
         [item.organization_id, item.title, item.body, item.ref_id],
       );
     },
+    async abrirAvisoRecuperacaoEsgotada(item) {
+      // `on conflict do nothing` casa o índice parcial da 0224
+      // (inbox_appointment_revision_unique): repetir num reprocesso é no-op.
+      await pool.query(
+        `insert into agent_inbox_items
+           (organization_id, kind, severity, title, body, ref_kind, ref_id, appointment_revision)
+         values ($1, 'appointment_recovery_review', 'warn',
+                 'Cliente faltou e não respondeu à recuperação',
+                 'As mensagens de reengajamento pós-falta foram enviadas e o cliente não respondeu. Decida o próximo passo e mova o card no funil.',
+                 'appointment', $2, $3)
+         on conflict (organization_id, ref_id, appointment_revision, kind)
+           where ref_kind = 'appointment' and appointment_revision is not null
+           do nothing`,
+        [item.organization_id, item.appointment_id, item.appointment_revision],
+      );
+    },
     async persistirRespostaFollowup(input) {
       await persistirRespostaFollowupPg((sql, params) => pool.query(sql, params), input);
     },
