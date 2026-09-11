@@ -716,6 +716,42 @@ para renumeração**, e quem lê a mensagem dele achando que é vai renumerar co
 
 ---
 
+## 8-quinquies. O PR cujo conteúdo foi REESCRITO — o merge de história
+
+Há um caso que o 8-bis não cobre: o PR que **originou** um épico e cujo código foi refeito por
+inteiro antes de entrar. Nem `git merge <head>` (traria de volta o que a revisão substituiu) nem
+fechar o PR (o histórico diria que o trabalho dele não entrou) estão certos.
+
+O desfecho é `git merge -s ours <head>` numa branch a partir da `main`: a história recebe os
+commits dele, o conteúdo fica como está, e o GitHub fecha o PR como **mergeado**.
+
+**A estratégia só é honesta com a medição ao lado, e a medição é a sobrevivência dos arquivos:**
+
+```bash
+tot=0; viv=0
+for f in $(git diff --name-only $(git merge-base pr<N> origin/main) pr<N>); do
+  tot=$((tot+1)); git cat-file -e origin/main:$f 2>/dev/null && viv=$((viv+1))
+done
+echo "trazidos=$tot vivos_na_main=$viv"
+```
+
+No épico da voz (PR #628, 11/09/2026) deu `trazidos=52 vivos_na_main=49`. **Com esse número, `-s
+ours` registra um fato; sem ele, é carimbo.** Se a sobrevivência for baixa, não é este o caso — o
+desfecho volta a ser fechar o PR com a explicação.
+
+Três regras duras:
+
+1. **O corpo do merge diz que é de história, não de conteúdo**, e diz por que trazer o conteúdo
+   reverteria a revisão. Escreva o que mudou e por quê — no #628 era LGPD, opt-out, desligar de
+   verdade, o desparear que não existia, e a troca para uma versão do upstream **que tem
+   autenticação, coisa que a original não tinha**.
+2. **`git diff --stat main HEAD` tem de ser vazio.** É a prova de que nada foi revertido, e ela vai
+   no corpo do PR.
+3. **Isto não é atalho para PR grande e chato.** É para o PR cuja arquitetura virou a do produto.
+   Se você está usando `-s ours` para não resolver conflito, está fazendo a coisa errada.
+
+---
+
 ## 9. Veredito com proveniência
 
 ```
@@ -1865,3 +1901,102 @@ Cada um destes foi cometido de verdade nesta casa, e é por isso que estão escr
           --jq ".jobs[] | select(.name|test(\"parte \\\\($p\\\\)\")) | .conclusion" 2>/dev/null; done \
       | sort | uniq -c | tr '\n' ' '; echo; done
     ```
+
+44. **Você commitou a SABOTAGEM, e o corpo do commit afirma a restauração que não entrou.**
+    O ciclo "sabote, confirme o vermelho, restaure" termina numa restauração que vive **no disco**.
+    Se o `git commit --only <paths>` seguinte não incluir aqueles paths, o que vai ao remoto é o
+    estado sabotado — com o conserto ao lado, correto e inerte.
+
+    Medido em 11/09/2026, na reconciliação do PR #643: o `patchedDependencies` do `package.json`
+    foi publicado apagado, e o arquivo em `patches/` seguiu versionado e correto, sem ninguém para
+    aplicá-lo. O corpo daquele commit dizia, textualmente, *"previsto 1 vermelho, observado 1
+    failed | 3 passed. **Restaurado: 4 passed.**"*
+
+    Duas coisas que tornam esta a pior variante da família (memória
+    `feedback_sabotar_antes_de_commitar`):
+
+    - **A mensagem de commit mente com sinceridade.** Ela descreve o que você FEZ NO DISCO; o
+      commit é o que você PUBLICOU. Este é o único erro em que as duas divergem, e dias depois
+      você lê o próprio corpo como se fosse evidência de estado. Não é.
+    - **O sintoma chega disfarçado de diferença de ambiente.** Passa na sua máquina (o disco tem a
+      restauração) e reprova no CI (o commit não tem). A primeira explicação que se escreve é
+      "o pnpm do CI não aplica o patch" — e daí se gasta meia hora rastreando cadeia de import
+      para um sintoma cuja causa é sua.
+
+    **A sonda, e ela vem ANTES de qualquer hipótese de ambiente:**
+
+    ```bash
+    git diff HEAD --stat                       # o disco diverge do que eu publiquei?
+    git show HEAD:<arquivo> | diff - <arquivo> # e diverge exatamente onde o gate lê?
+    ```
+
+    Se houver divergência em qualquer arquivo que o gate leia, a explicação acabou ali. E ao
+    sabotar: `git status --porcelain` depois de restaurar **e** `git diff --cached` antes de
+    commitar — o `--only` não protege de esquecer um path.
+
+45. **`git checkout <pr> -- <arquivo>` reverte trabalho mais novo, e o diff de contexto esconde
+    isso.** Um PR que esperou tem branch de antes. Pegar o arquivo inteiro dele para extrair uma
+    correção de duas linhas traz junto a ausência de tudo que entrou depois.
+
+    Medido em 11/09/2026 ao extrair o conserto do crontab do PR #683:
+
+    ```
+    $ git checkout pr683 -- hostgator-setup-kit/_common.sh
+    $ git diff --stat origin/main -- hostgator-setup-kit/_common.sh
+     1 file changed, 11 insertions(+), 41 deletions(-)
+                                        ^^^^^^^^^^^^^^ 41 linhas da main iam embora
+    ```
+
+    **O controle é o `--stat`, e ele é obrigatório depois de todo `checkout <ref> -- <path>`.**
+    Se o número de deleções for maior que o tamanho da correção que você queria, restaure e aplique
+    à mão. Dizer isso ao contribuidor não é crítica dele: é o custo normal de um PR que esperou, e
+    a espera foi nossa.
+
+46. **PR que mistura conserto de P0 e decisão do dono — extraia o conserto, mantenha o PR aberto.**
+    Um PR com quatro coisas dentro, três consertos e uma escolha de identidade visual, não tem
+    desfecho único. Segurar tudo até a decisão vir deixa um P0 de instalação na fila atrás de uma
+    questão de gosto; mergear tudo decide a cara do produto sem o dono.
+
+    O desfecho é **dois**: o conserto sai num PR próprio, creditado, hoje; o PR original fica aberto
+    com um documento de decisão, e o contribuidor recebe a explicação de por que o trabalho dele foi
+    partido — incluindo a frase que importa: *"não estou recusando; quem decide isto não sou eu"*.
+
+47. **O CI é recurso compartilhado e saturável, e quem satura é você.** Abrir seis PRs de
+    reconciliação em vinte minutos pôs **17 execuções na fila** da conta em 11/09/2026 — e a
+    primeira vítima foi o próprio corte de versão, que ficou `queued` por mais de uma hora atrás
+    dos checks dos PRs que ele ia publicar.
+
+    É o `feedback_saturacao_sem_perguntar_quem_satura` aplicado ao CI em vez da máquina local. A
+    regra prática: **antes de abrir o próximo PR, `gh run list --limit 20 --jq '[.[]|select(.status=="queued")]|length'`.**
+    Acima de ~8, termine o que está em voo antes de empilhar mais. E o corte de versão vai
+    **antes** da próxima leva, nunca depois — ele é o que entrega, e os outros só preparam.
+
+48. **A sonda de status do monitor casa o nome errado e declara verde.** Um filtro
+    `test("^(verify|invariants|e2e|build-and-size)$")` **não casa `e2e-parte`** — o job que de fato
+    roda o Playwright. Em 11/09/2026 um monitor anunciou `#707 VERDE` com duas das três partes do
+    e2e ainda pendentes, porque o conjunto que ele mediu não as continha.
+
+    É o modo de falha 7 (controle positivo) aplicado a filtro de nome: **uma sonda que não encontra
+    o job é indistinguível de um job que passou.** O controle é contar: se o filtro devolve menos
+    checks obrigatórios do que a `branch protection` exige, ele está cego — não verde. Prefira
+    `length < 6 then ""` a `all(.bucket=="pass")` sobre um conjunto de tamanho não conferido.
+
+49. **O mecanismo que "falhou" pode só precisar de mais uma rodada — sonde a função antes de acusá-la.**
+    Um invariante do PR #657 reprovava com o enrollment parado em `active`, e a hipótese —
+    do autor e minha — era que `fn_claim_due_followup_enrollments` estivesse falhando. A hipótese
+    era boa: o motor **engole falha de claim**, e o comentário dele diz que `claimed: 0` é
+    indistinguível de "nada vencido". Mas ela estava errada.
+
+    ```
+    SONDA-CLAIM-OK  {"n":1}                        ← a função reclamava normalmente
+    SONDA-TICK      {"claimed":1,"advanced":1}     ← e o tick avançou
+    SONDA-POS       {"status":"active","current_node_id":"end"}
+    ```
+
+    O motor avança **um nó por rodada**: o primeiro tick levou o enrollment até o nó final, o
+    segundo é que o executa. O teste tinha um tick só.
+
+    **A regra:** quando um mecanismo documentadamente silencioso é o suspeito, chame-o **direto**,
+    isolado, antes de escrever uma linha de diagnóstico. Três `console.log` num teste de invariante
+    custam uma rodada de `test:db` e trocam uma teoria por um número. O silêncio dele torna a
+    acusação fácil demais — e é exatamente por isso que ela precisa de prova.
