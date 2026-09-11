@@ -30,6 +30,7 @@ import {
 import { PAPEIS, PONTOS_DE_IA, PONTO_POR_ID } from "@/lib/ai/pontos/registro";
 import { PROVEDORES, ehProvedorSuportado } from "@/lib/ai/pontos/provedores";
 import { validarBinding } from "@/lib/ai/pontos/validar-binding";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 
@@ -396,11 +397,30 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     );
   }
 
+  // ⚠️ CLIENTE ADMIN, E NÃO É ATALHO: a RLS de `organizations` só deixa
+  // ESCREVER quem é platform admin. Com o cliente de sessão, o `update` abaixo
+  // casa ZERO linhas para o `admin` do próprio tenant — e o PostgREST devolve
+  // SUCESSO, sem erro. Medido: `admin` da org → 0 linhas afetadas; mesmo
+  // comando com o cliente admin → 1. É a pior forma de falhar, porque a tela
+  // diria "salvo".
+  //
+  // Como o `install.sh` cria o dono da instalação COMO platform admin, o
+  // caminho funcionaria na máquina de quem testa e quebraria para o segundo
+  // administrador do time — o tipo de defeito que só aparece no cliente.
+  //
+  // É o que fazem os oito escritores de `organizations` deste repo, com o
+  // gêmeo exato em `app/actions/auth/politicaDeMfa.ts:62`, que escreve o MESMO
+  // jsonb. O `.eq("id", org.orgId)` abaixo é obrigatório e não decorativo: o
+  // service role passa por cima da RLS, então o filtro de tenant vira
+  // responsabilidade deste arquivo. `org.orgId` vem do `requireRole` (cookie/
+  // JWT), nunca do corpo.
+  const admin = createAdminClient();
+
   // MERGE, nunca sobrescrita. `organizations.settings` é um jsonb compartilhado
   // — `branding` (a marca da instalação) e `security` (a política de MFA) moram
   // nele. Um `update({ settings: { llm } })` ingênuo apaga os dois em silêncio, e
   // o sintoma aparece dias depois, longe daqui.
-  const { data: orgAtual } = await db
+  const { data: orgAtual } = await admin
     .from("organizations")
     .select("settings")
     .eq("id", org.orgId)
@@ -412,7 +432,7 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     llm: { provider: corpo.provider, default_model: corpo.default_model },
   };
 
-  const { data: gravado, error } = await db
+  const { data: gravado, error } = await admin
     .from("organizations")
     .update({ settings })
     .eq("id", org.orgId)
