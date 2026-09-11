@@ -155,7 +155,7 @@ describe("mapRdStationPayload — extração de identidade", () => {
   it("name/email caem para os rótulos da conversão quando o topo não traz", () => {
     const env = rdEnvelope({ name: null, email: null });
     // repõe só na conversão
-    const lead = (env.leads as Record<string, unknown>[])[0];
+    const lead = (env.leads as Record<string, unknown>[])[0]!;
     (lead.last_conversion as { content: Record<string, unknown> }).content.Nome = "Nome Da Conversao";
     (lead.last_conversion as { content: Record<string, unknown> }).content.email_lead = "conv@example.com";
     const m = mapRdStationPayload(env);
