@@ -23286,6 +23286,105 @@ update public.channel_sessions
        updated_at = now()
  where provider = 'waha' and waha_session_name is not null
    and length(waha_session_name) > 54 and phone_number is null and status <> 'WORKING';
+-- ---- Convites de time persistidos (migration 0238) ----
+--
+-- Racional completo no cabeçalho da migration 0238. Em uma linha: o convite
+-- pendente não existia no banco (token stateless + linha só no aceite), então a
+-- tela de Equipe não o mostrava e REVOGAR era impossível. `team_invites` é o
+-- registro; o `id` da linha é o `invite_id` do token.
+--
+-- Idempotente e auto-curativo: `if not exists` em tabela/índices, `drop ... if
+-- exists` antes de cada policy e do trigger; dedup antes do índice único.
+create table if not exists public.team_invites (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  email text not null,
+  role text not null,
+  interface_settings jsonb not null default '{"preset":"completa"}'::jsonb,
+  invited_by uuid references auth.users(id) on delete set null,
+  inviter_name text,
+  email_dispatched boolean not null default false,
+  created_at timestamptz not null default now(),
+  last_sent_at timestamptz not null default now(),
+  resend_count integer not null default 0,
+  expires_at timestamptz not null,
+  accepted_at timestamptz,
+  accepted_by uuid references auth.users(id) on delete set null,
+  revoked_at timestamptz,
+  revoked_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now(),
+  constraint team_invites_role_check check (role in ('viewer','agent','manager','admin')),
+  constraint team_invites_email_nao_vazio check (length(btrim(email)) > 0)
+);
+
+-- Clone com versão antiga desta tabela: garante as colunas que vieram depois.
+alter table public.team_invites add column if not exists interface_settings jsonb not null default '{"preset":"completa"}'::jsonb;
+alter table public.team_invites add column if not exists inviter_name text;
+alter table public.team_invites add column if not exists email_dispatched boolean not null default false;
+alter table public.team_invites add column if not exists last_sent_at timestamptz not null default now();
+alter table public.team_invites add column if not exists resend_count integer not null default 0;
+alter table public.team_invites add column if not exists accepted_by uuid references auth.users(id) on delete set null;
+alter table public.team_invites add column if not exists revoked_at timestamptz;
+alter table public.team_invites add column if not exists revoked_by uuid references auth.users(id) on delete set null;
+alter table public.team_invites add column if not exists updated_at timestamptz not null default now();
+
+create index if not exists team_invites_org_created_idx
+  on public.team_invites (organization_id, created_at desc);
+
+-- Antes do índice único: resolve dados que o violem (clone bugado) mantendo o
+-- pendente mais recente e revogando os demais.
+with ranked as (
+  select id,
+         row_number() over (
+           partition by organization_id, lower(email)
+           order by created_at desc, id desc
+         ) as rn
+    from public.team_invites
+   where accepted_at is null and revoked_at is null
+)
+update public.team_invites t
+   set revoked_at = now(), updated_at = now()
+  from ranked
+ where t.id = ranked.id and ranked.rn > 1;
+
+create unique index if not exists team_invites_um_pendente_por_email_idx
+  on public.team_invites (organization_id, lower(email))
+  where accepted_at is null and revoked_at is null;
+
+alter table public.team_invites enable row level security;
+
+drop policy if exists team_invites_select on public.team_invites;
+create policy team_invites_select on public.team_invites
+  for select using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'manager'))
+  );
+
+drop policy if exists team_invites_write on public.team_invites;
+create policy team_invites_write on public.team_invites
+  using (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'admin'))
+  )
+  with check (
+    public.fn_is_platform_admin()
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'admin'))
+  );
+
+revoke all on public.team_invites from anon;
+grant select, insert, update, delete on public.team_invites to authenticated;
+grant all on public.team_invites to service_role;
+
+drop trigger if exists trg_team_invites_updated_at on public.team_invites;
+create trigger trg_team_invites_updated_at
+  before update on public.team_invites
+  for each row execute function public.fn_set_updated_at();
+
+comment on table public.team_invites is
+  'Convite de time PENDENTE e seu histórico. O id da linha = invite_id do token HMAC; o aceite casa os dois e recusa convite revogado. Status é derivado, não coluna.';
 
 notify pgrst,'reload schema';
 

@@ -72,6 +72,11 @@ export const AUDIT_ACTIONS = [
   // pergunta "quem devolveu o acesso desta pessoa, e quando?" só tem resposta
   // aqui — a coluna `revoked_at` volta a NULL e não guarda histórico.
   "member.reactivated",
+  // Um convite PENDENTE cancelado na tela de Equipe (migration 0238). Distinto
+  // de `member.revoked` (tira acesso de quem já entrou): aqui ninguém chegou a
+  // ser membro. O REENVIO de um convite audita como `member.invited` — é uma
+  // nova emissão do mesmo convite.
+  "member.invite_revoked",
   "token.created",
   "token.revoked",
   "profile.updated",
