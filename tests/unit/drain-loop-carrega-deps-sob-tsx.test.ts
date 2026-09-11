@@ -30,6 +30,18 @@ const MODULOS = [
   "@/lib/event-log/register-handlers",
 ] as const;
 
+/**
+ * O gerador de PDF saiu do caminho do laço (virou `await import` dentro da
+ * função, em `workers/lgpd-export-worker.ts`), e por isso os três acima
+ * resolveriam mesmo SEM o patch em `patches/@react-pdf__hyphenate.patch`.
+ *
+ * Mas o patch continua sendo o que faz a exportação de LGPD funcionar de
+ * verdade: sem ele, `renderLgpdPdf` falha na HORA DA CHAMADA, com o titular
+ * esperando o arquivo. Este módulo está aqui para que tirar o patch fique
+ * vermelho em algum lugar — e no lugar certo, separado do laço.
+ */
+const MODULO_TARDIO = "@/lib/lgpd/pdf-renderer";
+
 function importaSobTsx(modulo: string): { ok: boolean; saida: string } {
   const script = `import(${JSON.stringify(modulo)}).then(()=>process.exit(0)).catch(e=>{console.error(String(e&&e.message||e));process.exit(1)})`;
   try {
@@ -57,4 +69,9 @@ describe("o laço rápido do event_log carrega as dependências sob tsx", () => 
       expect(r.ok, `não resolveu sob tsx:\n${r.saida}`).toBe(true);
     });
   }
+
+  it(`${MODULO_TARDIO} resolve sob tsx (o import tardio do worker de LGPD)`, () => {
+    const r = importaSobTsx(MODULO_TARDIO);
+    expect(r.ok, `não resolveu sob tsx:\n${r.saida}`).toBe(true);
+  });
 });
