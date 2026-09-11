@@ -5423,6 +5423,16 @@ export const DICIONARIO: Traducoes = {
       es: "; en un Supabase propio, apuntando GOTRUE_MAILER_TEMPLATES_* a las rutas /email-templates/ de la app.",
     },
   "Conta suspensa": { es: "Cuenta suspendida" },
+  // Tela irmã de `/account-suspended`: quem TINHA acesso e não tem mais.
+  "Acesso revogado": { es: "Acceso revocado" },
+  "Seu acesso a esta organização foi retirado. Se você acredita que isso é um engano, fale com quem administra a empresa — só ela pode devolvê-lo.":
+    {
+      es: "Tu acceso a esta organización fue retirado. Si crees que es un error, habla con quien administra la empresa — solo ella puede devolvértelo.",
+    },
+  "Seu acesso a esta organização foi retirado. Fale com quem administra a empresa — criar uma organização nova não devolve o acesso.":
+    {
+      es: "Tu acceso a esta organización fue retirado. Habla con quien administra la empresa — crear una organización nueva no devuelve el acceso.",
+    },
   "Sua conta está suspensa. Entre em contato com": {
     es: "Tu cuenta está suspendida. Contacta a",
   },
