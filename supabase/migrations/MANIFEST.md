@@ -285,3 +285,5 @@ To re-apply on a fresh Supabase project, replay the migrations in version order 
 | `20260907050000` | `0229_mfa_e_lgpd_agenda` | MFA nas quatro ações humanas, ordem de locks LGPD/agenda e footprint de avisos de presença/Meet na redação; baseline e backfill idempotentes. |
 
 | `20260907060000` | `0230_reserva_pre_go_live` | A reserva transacional de novos canais WAHA preserva o pré-go-live da plataforma; retry mantém política e identidade existentes. Forward-fix da integração, sem alterar 0228 aplicada. |
+
+| `20260909190000` | `0232_nome_de_sessao_waha_cabe_no_teto_do_waha` | `fn_reserve_channel_connection` gerava `waha_session_name` de 69 chars (`org_<32>_<32>`); o WAHA latest-2026.7.2 valida `name` com @MaxLength(54) e todo `POST /api/sessions` de canal novo tomava 400 (`waha_create_400`). Prefixo da org encurta para 8 (`org_<8>_<32>` = 45), alinhado com a busca de canal de onboarding no mesmo corpo. Repara canais WAHA nunca pareados com nome fora do teto. Forward-fix da 0230. |
