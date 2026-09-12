@@ -54,18 +54,13 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Corrigido
 
-- **A instalação não morre mais no fim, numa VPS que nunca teve tarefas agendadas** Numa VPS recém-provisionada — que nunca teve nenhuma tarefa agendada, o estado
-  normal de quem contrata uma máquina nova — o instalador **morria no fim, sem mensagem nenhuma**, logo depois de ativar as automações.
+- **O instalador não para mais em "Ativando as automações" numa VPS nova** Numa VPS recém-criada o root ainda não tem agendamento nenhum, e o instalador parava logo depois de **"chave de cifra ativa no banco"**, sem mensagem de erro, mostrando **"A instalação parou"** — com o CRM já no ar e os contêineres saudáveis. Rodar o instalador de novo contornava, o que fazia o problema parecer fantasma.
 
-  O que acontecia: o comando que lê as tarefas agendadas "reclama" quando não há
-  nenhuma, e essa reclamação derrubava o script inteiro. A ironia é que a tarefa
-  **já tinha sido gravada** nesse ponto: a instalação estava correta e parecia ter
-  quebrado.
+  O que acontecia: o comando que lê as tarefas agendadas "reclama" quando não há nenhuma, e essa reclamação derrubava o script inteiro. A ironia é que a tarefa **já tinha sido gravada** nesse ponto — a instalação estava correta e parecia ter quebrado.
 
-  Agora o instalador entende que "não existe nenhuma tarefa ainda" é uma resposta
-  normal e segue até o fim, com a mensagem de sucesso.
+  Agora ele agenda as automações e o agente de atualização direto, na primeira rodada. Quem já instalou não precisa fazer nada.
 
-  Achado por um contribuidor de fora, que instalou numa VPS limpa e viu.
+  **Achado por duas pessoas no mesmo dia, sem que uma soubesse da outra: @luiscgc91 e @rafaelbatistazz**, as duas instalando numa VPS limpa. As duas escreveram exatamente a mesma correção. A descrição acima é a do @rafaelbatistazz, que nomeia o que se vê na tela.
 
 - **Áudio, foto, vídeo e documento recebidos pelo WhatsApp oficial agora aparecem** Quem usa o canal **oficial do WhatsApp** (a API da Meta) recebia a mensagem, mas
   **não o arquivo**: o áudio, a foto, o vídeo ou o documento simplesmente não
