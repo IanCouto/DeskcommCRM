@@ -4088,6 +4088,13 @@ export const DICIONARIO: Traducoes = {
   "Desligada. Ninguém consegue ligar nem receber chamadas por aqui.": {
     es: "Desactivada. Nadie puede llamar ni recibir llamadas por aquí.",
   },
+  "A chamada de voz está desligada nesta empresa.": {
+    es: "La llamada de voz está desactivada en esta empresa.",
+  },
+  "Conectar o aparelho exige ligá-la antes, em Configurações › Segurança — é lá que está o aviso sobre o risco de o WhatsApp bloquear a conta, e quem liga precisa ter lido.":
+    {
+      es: "Conectar el dispositivo exige activarla antes, en Configuración › Seguridad — allí está el aviso sobre el riesgo de que WhatsApp bloquee la cuenta, y quien la activa tiene que haberlo leído.",
+    },
   "Leia antes de ligar": { es: "Lee antes de activar" },
   "Para fazer chamadas, o sistema precisa conectar um segundo aparelho ao mesmo número de WhatsApp que você já usa para atender. Essa conexão não é feita pelo caminho oficial do WhatsApp.":
     {
