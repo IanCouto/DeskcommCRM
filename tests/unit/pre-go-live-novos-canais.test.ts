@@ -32,6 +32,10 @@ describe("todo canal criado pela interface nasce em pré-go-live", () => {
     expect(initial).not.toBeNull();
     expect(JSON.parse(initial![1]!)).toEqual(metadataInicialDoCanal());
     expect(fn).toContain("case when p_onboarding then '{\"onboarding\":true}'::jsonb");
+    // 0232: o formato 0228/0230 (dois uuid sem hífen) tem 69 chars; o WAHA
+    // recusa name >54 com HTTP 400 e o QR nunca nasce.
+    expect(fn).not.toContain("replace(p_org::text,'-','')||'_'||replace(gen_random_uuid()::text,'-','')");
+    expect(fn).toContain("substr(md5(gen_random_uuid()::text),1,16)");
   });
 
   it("reconectar canal parceiro preserva a configuração que já existia", () => {
