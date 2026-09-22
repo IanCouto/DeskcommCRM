@@ -26,11 +26,17 @@ describe("deploy da develop na VPS não puxa o registro do upstream", () => {
     expect(semComentario).not.toMatch(/http\.extraHeader/);
   });
 
-  it("libera imagem sem uso antes do pull — o disco cheio mata o pull no meio", () => {
-    const prune = semComentario.indexOf("docker image prune -af");
-    const pull = semComentario.indexOf("dc pull");
-    expect(prune).toBeGreaterThan(-1);
-    expect(prune).toBeLessThan(pull);
+  it("libera o disco antes do backup e do login — os dois morrem com disco cheio", () => {
+    const linhas = semComentario.split("\n").map((l) => l.trim());
+    const iLib = linhas.findIndex((l) => l === "liberar_disco");
+    const iBackup = linhas.findIndex((l) => l.includes("backup.sh"));
+    const iLogin = linhas.findIndex((l) => l.includes("docker login"));
+    const iPull = linhas.findIndex((l) => l.includes("dc pull"));
+    expect(iLib).toBeGreaterThan(-1);
+    expect(iLib).toBeLessThan(iBackup);
+    expect(iLib).toBeLessThan(iLogin);
+    expect(iLib).toBeLessThan(iPull);
+    expect(semComentario).toContain("docker image prune -af");
     expect(semComentario).not.toMatch(/docker (system|network) prune/);
   });
 });

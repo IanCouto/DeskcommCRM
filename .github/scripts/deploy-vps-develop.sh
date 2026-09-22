@@ -39,6 +39,25 @@ enter_project
 recusar_projeto_de_outra_arvore \
   || die "Atualização interrompida para não quebrar a instalação que está no ar."
 
+# Disco cheio mata o backup (gzip) e o docker login (config.json) ANTES de
+# qualquer pull. O lixo que enche é pull interrompido em ingest/ e imagem
+# sem container. Rede não entra: network prune derruba o proxy.
+liberar_disco() {
+  df -h / | tail -1 || true
+  docker system df || true
+  ingest=/var/lib/containerd/io.containerd.content.v1.content/ingest
+  if [ -d "$ingest" ]; then
+    find "$ingest" -mindepth 1 -maxdepth 1 -exec rm -rf {} + || true
+  fi
+  docker container prune -f >/dev/null 2>&1 || true
+  docker image prune -af >/dev/null 2>&1 || true
+  docker builder prune -af >/dev/null 2>&1 || true
+  df -h / | tail -1 || true
+}
+
+step "Abrindo espaço no disco"
+liberar_disco
+
 step "Backup de segurança (antes de mexer no banco)"
 if bash "${PROJECT_DIR}/hostgator-setup-kit/backup.sh"; then
   c_grn "✓ backup feito"
@@ -92,23 +111,12 @@ else
   c_ylw "⚠ supabase/baseline.sql não encontrado — pulei a parte do banco."
 fi
 
-step "Abrindo espaço para a imagem nova"
-# A tag :develop anda e a imagem anterior fica sem nome. Um pull interrompido
-# deixa blob em ingest/. Os dois enchem o disco e o próximo pull morre com
-# "no space left on device". Rede fica de fora: network prune derruba o proxy.
-df -h / | tail -1 || true
-docker container prune -f >/dev/null 2>&1 || true
-docker image prune -af >/dev/null 2>&1 || true
-docker builder prune -af >/dev/null 2>&1 || true
-ingest=/var/lib/containerd/io.containerd.content.v1.content/ingest
-if [ -d "$ingest" ]; then
-  find "$ingest" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-fi
-df -h / | tail -1 || true
-
 step "Baixando a imagem nova e reiniciando"
+liberar_disco
 if ! dc pull; then
-  die "Não consegui puxar as imagens ghcr.io/${DONO}/*:develop. O job publicou?"
+  step "Pull falhou — liberando de novo e tentando outra vez"
+  liberar_disco
+  dc pull || die "Não consegui puxar as imagens ghcr.io/${DONO}/*:develop. O job publicou?"
 fi
 garantir_rede_do_proxy
 dc up -d
