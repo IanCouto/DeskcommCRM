@@ -153,7 +153,7 @@ function makeDb(pointers: Row[], versions: Row[], stages: Row[] = []) {
     }
 
     const b = {
-      select() {
+      select(_cols?: string) {
         return b;
       },
       insert(obj: Row) {
@@ -952,7 +952,7 @@ describe("POST /api/v1/ai/followup-flows/:id/duplicate", () => {
     const { POST } = await import("@/app/api/v1/ai/followup-flows/[id]/duplicate/route");
     const res = await POST(req("POST"), ctx(P1));
     expect(res.status).toBe(403);
-    const { data } = await db.from("followup_flow_pointers").select("id");
+    const { data } = (await db.from("followup_flow_pointers").select("id")) as { data: Row[] };
     expect(data).toHaveLength(1);
   });
 

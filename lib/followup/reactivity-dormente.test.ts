@@ -78,12 +78,13 @@ function inscricao(over: Partial<LiveEnrollmentRef> = {}): LiveEnrollmentRef {
   };
 }
 
-function eventoDeInbound() {
+function eventoDeInbound(extra: Record<string, unknown> = {}) {
   return {
     id: "33333333-3333-4333-8333-333333333333",
     organization_id: ORG,
     event_type: "message.received",
     payload: { contact_id: CONTATO, direction: "inbound" },
+    ...extra,
   } as never;
 }
 
@@ -174,10 +175,11 @@ describe("reatividade — quem não dorme segue igual (não-regressão)", () => 
       }),
     ]);
 
-    const s = await applyReactivityEvent(db, () => new Date(AGORA), {
-      ...eventoDeInbound(),
-      created_at: "2026-09-20T19:35:45.000Z",
-    });
+    const s = await applyReactivityEvent(
+      db,
+      () => new Date(AGORA),
+      eventoDeInbound({ created_at: "2026-09-20T19:35:45.000Z" }),
+    );
 
     expect(s.reacted).toBe(0);
     expect(espiao.eventos).toEqual([]);
