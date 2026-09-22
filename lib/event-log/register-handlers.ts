@@ -33,11 +33,14 @@ export function ensureHandlersRegistered(): void {
   // Follow-up de inbound ANTES do LLM: no Hobby o drain da mensagem
   // estourava no worker de IA e o match_reply nunca lia a resposta.
   registerHandler(followupReactivityHandler);
-  registerHandler(followupGatilhoRetornoHandler);
   // Atribuição de resposta da campanha: logo depois da reatividade e ANTES do
   // LLM, pelo mesmo motivo dela — é escrita curta no banco, sem rede de
   // terceiro, e não pode ficar atrás de um consumidor que pode estourar.
   registerHandler(campanhaRespostaHandler);
+  // Mesmo critério: o gatilho do cliente que volta é escrita curta no banco e
+  // precisa rodar antes do LLM. Depois da reatividade, para o match_reply dos
+  // fluxos já vivos ler a mensagem primeiro.
+  registerHandler(followupGatilhoRetornoHandler);
   registerHandler(aiResponseHandler);
   registerHandler(aiSentimentHandler);
   registerHandler(aiHandoffFromSentimentHandler);

@@ -21,6 +21,7 @@ import {
   type ReactivityAdminClient,
 } from "./reactivity";
 import type { EnrollmentPatch } from "./engine";
+import type { EventRow } from "@/lib/event-log/dispatcher";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const CONTATO = "22222222-2222-4222-8222-222222222222";
@@ -78,14 +79,19 @@ function inscricao(over: Partial<LiveEnrollmentRef> = {}): LiveEnrollmentRef {
   };
 }
 
-function eventoDeInbound(extra: Record<string, unknown> = {}) {
+function eventoDeInbound(over: Partial<EventRow> = {}): EventRow {
   return {
     id: "33333333-3333-4333-8333-333333333333",
     organization_id: ORG,
     event_type: "message.received",
+    entity_kind: "message",
+    entity_id: null,
     payload: { contact_id: CONTATO, direction: "inbound" },
-    ...extra,
-  } as never;
+    metadata: {},
+    consumed_by: [],
+    attempts: 0,
+    ...over,
+  };
 }
 
 describe("reatividade — a inscrição dormente", () => {
