@@ -248,6 +248,29 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
       "(`vars.RELOGIO_LIGADO`), não uma adaptação de fork — mas ela fica no mapa para " +
       "que trocar a variável por outra coisa continue passando por revisão.",
   },
+
+  // Canal móvel DESTE fork (IanCouto/DeskcommCRM, branch develop). O `if:` prende
+  // os três jobs a esse repositório e a essa branch: em qualquer outro lugar o
+  // job não roda. Não leve este bloco de volta no PR do produto — o workflow
+  // também não vai (cabeçalho de deploy-vps-develop.yml).
+  "deploy-vps-develop.yml::build-and-push": {
+    condicao: "github.repository == 'IanCouto/DeskcommCRM' && github.ref == 'refs/heads/develop'",
+    efeito:
+      "Este job publica as três imagens :develop no GHCR deste fork. Desligá-lo faz " +
+      "a VPS puxar uma tag que não existe.",
+  },
+  "deploy-vps-develop.yml::imagem-do-app-sobe": {
+    condicao: "github.repository == 'IanCouto/DeskcommCRM' && github.ref == 'refs/heads/develop'",
+    efeito:
+      "Este job prova que a imagem :develop do app chega a servir antes do SSH. " +
+      "Desligá-lo manda para a VPS uma imagem que morre no boot.",
+  },
+  "deploy-vps-develop.yml::deploy-vps": {
+    condicao: "github.repository == 'IanCouto/DeskcommCRM' && github.ref == 'refs/heads/develop'",
+    efeito:
+      "Este job é o SSH que atualiza a VPS. Desligá-lo publica a imagem e deixa o " +
+      "servidor na versão anterior, sem erro na máquina.",
+  },
 };
 
 interface JobLido {

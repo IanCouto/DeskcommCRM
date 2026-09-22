@@ -25,4 +25,12 @@ describe("deploy da develop na VPS não puxa o registro do upstream", () => {
     expect(semComentario).toContain("GIT_TERMINAL_PROMPT=0");
     expect(semComentario).not.toMatch(/http\.extraHeader/);
   });
+
+  it("libera imagem sem uso antes do pull — o disco cheio mata o pull no meio", () => {
+    const prune = semComentario.indexOf("docker image prune -af");
+    const pull = semComentario.indexOf("dc pull");
+    expect(prune).toBeGreaterThan(-1);
+    expect(prune).toBeLessThan(pull);
+    expect(semComentario).not.toMatch(/docker (system|network) prune/);
+  });
 });
