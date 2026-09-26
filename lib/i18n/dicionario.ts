@@ -39,6 +39,16 @@ type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>
 export const DICIONARIO: Traducoes = {
   // ─── CAMPOS OBRIGATÓRIOS (issue #1536) ───
   "Campos obrigatórios": { es: "Campos obligatorios" },
+  // Editor de `obrigatorio_em` no funil (CR do mantenedor no PR #1688).
+  "Exigir o preenchimento:": { es: "Exigir el llenado:" },
+  "Exigir em": { es: "Exigir en" },
+  "Ao ganhar": { es: "Al ganar" },
+  "Ao perder": { es: "Al perder" },
+  "arquivada": { es: "archivada" },
+  "Sem marca nenhuma este campo nunca é exigido — é o comportamento de sempre. Marcado, ele precisa estar preenchido para o negócio entrar na etapa escolhida ou ser fechado como ganho/perdido.":
+    {
+      es: "Sin ninguna marca este campo nunca se exige — es el comportamiento de siempre. Marcado, debe estar completado para que el negocio entre en la etapa elegida o se cierre como ganado/perdido.",
+    },
   "Este funil exige alguns dados antes de mover o negócio. Preencha o que falta para continuar.": {
     es: "Este embudo exige algunos datos antes de mover el negocio. Completa lo que falta para continuar.",
   },
