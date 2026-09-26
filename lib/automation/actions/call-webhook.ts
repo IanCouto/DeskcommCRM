@@ -58,6 +58,39 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * O RESPONSÁVEL no corpo, e só por opt-in (#1612, mesma régua de #1528).
+ *
+ * `config.include_owner !== true` → a chave nem nasce: "sem opt-in, o
+ * responsável não aparece no corpo" é asserção de teste, não comentário, e a
+ * forma segura de garanti-la é a de não construir o objeto.
+ *
+ * O id vem do COMPROMISSO já hidratado pelo motor (`context.appointment`) —
+ * nenhuma consulta nova no caminho padrão. O NOME é que não viaja no payload:
+ * ele mora em `auth.users.user_metadata`, então só é buscado aqui, dentro de
+ * `try` — sem service role (ou num teste sem rede) o corpo sai com o id, que
+ * já responde "de quem era", em vez da entrega inteira falhar por causa de um
+ * apelido.
+ */
+async function responsavelPublico(
+  ctx: ActionCtx,
+  config: Record<string, unknown>,
+): Promise<Record<string, unknown> | undefined> {
+  if (config.include_owner !== true) return undefined;
+  const compromisso = ctx.context.appointment as Record<string, unknown> | undefined;
+  const ownerId = compromisso && typeof compromisso.owner_user_id === "string" ? compromisso.owner_user_id : null;
+  if (!ownerId) return undefined;
+  let nome: string | null = null;
+  try {
+    const { data } = await ctx.admin.auth.admin.getUserById(ownerId);
+    const metadata = data?.user?.user_metadata as { full_name?: unknown } | undefined;
+    nome = typeof metadata?.full_name === "string" && metadata.full_name ? metadata.full_name : null;
+  } catch {
+    nome = null;
+  }
+  return nome ? { id: ownerId, name: nome } : { id: ownerId };
+}
+
 export async function executeCallWebhook(
   ctx: ActionCtx,
   config: Record<string, unknown>,
@@ -79,6 +112,7 @@ export async function executeCallWebhook(
 
   const leadPublic = projectPublicFields(ctx.context.lead, LEAD_PUBLIC_FIELDS);
   const contactPublic = projectPublicFields(ctx.context.contact, CONTACT_PUBLIC_FIELDS);
+  const ownerPublic = await responsavelPublico(ctx, config);
   const body = JSON.stringify({
     event: ctx.event.event_type,
     occurred_at: new Date().toISOString(),
@@ -86,6 +120,8 @@ export async function executeCallWebhook(
       ...ctx.event.payload,
       ...(leadPublic ? { lead: leadPublic } : {}),
       ...(contactPublic ? { contact: contactPublic } : {}),
+      // Só com `include_owner: true` (#1612) — ver `responsavelPublico`.
+      ...(ownerPublic ? { owner: ownerPublic } : {}),
     },
   });
   const headers: Record<string, string> = {
