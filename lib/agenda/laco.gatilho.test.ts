@@ -33,14 +33,27 @@ describe("gatilhoDaTransicao", () => {
     expect(gatilhoDaTransicao("pending", "cancelled")).toBe("appointment.cancelled");
   });
 
-  it("compareceu e faltou NÃO emitem: já têm appointment.outcome_confirmed", () => {
-    // Dois eventos para o mesmo fato fariam a regra rodar duas vezes.
-    expect(gatilhoDaTransicao("confirmed", "completed")).toBeNull();
-    expect(gatilhoDaTransicao("confirmed", "no_show")).toBeNull();
+  it("compareceu e faltou emitem os SEUS — uma vez cada (#1612)", () => {
+    // Dois eventos para o mesmo fato SÓ fariam a regra rodar duas vezes se ela
+    // pudesse assinar os dois; não pode, um gatilho por evento. O que a issue
+    // pedia era justamente estes dois, e a fonte deles é a TRANSIÇÃO —
+    // `appointment.outcome_confirmed` (o outro emissor) só nasce para falta.
+    expect(gatilhoDaTransicao("confirmed", "completed")).toBe("appointment.completed");
+    expect(gatilhoDaTransicao("confirmed", "no_show")).toBe("appointment.no_show");
+    // Da MESMA situação anterior: uma correção (compareu → faltou) é outro
+    // fato, e cada um tem o seu gatilho.
+    expect(gatilhoDaTransicao("completed", "no_show")).toBe("appointment.no_show");
   });
 
   it("nascer já cancelado ou concluído não é gatilho de nada", () => {
     expect(gatilhoDaTransicao(null, "cancelled")).toBeNull();
     expect(gatilhoDaTransicao(null, "completed")).toBeNull();
+  });
+
+  it("reenviar o mesmo status não emite de novo: é o guard de 'uma vez cada'", () => {
+    // `atualizarAgendamento` só constrói transição quando o status MUDOU, mas
+    // a régua pura também recusa — dois emissores, a mesma regra.
+    expect(gatilhoDaTransicao("completed", "completed")).toBeNull();
+    expect(gatilhoDaTransicao("no_show", "no_show")).toBeNull();
   });
 });
