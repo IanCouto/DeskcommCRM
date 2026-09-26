@@ -38357,6 +38357,23 @@ alter table public.messages
 comment on column public.messages.sent_on_behalf_of_user_id is
   'Autoria "em nome de" (#1613, migration 0416): a PESSOA — membro ativo agent+ da organização — em nome de quem um token enviou esta mensagem. null em todo envio direto. Só a rota POST /api/v1/messages grava, e só com o escopo messages:on_behalf; o balão mostra "Fulano · via {token}" a partir de metadata.sent_on_behalf.';
 
+-- ---- motivo de ganho nativo (migration 0420, issue #1536) ----
+--
+-- Coluna nova, nullable, sem backfill e sem policy nova — a RLS por organização
+-- já cobre a linha de `crm_leads`. SEM CHECK e SEM trigger de propósito: a
+-- obrigatoriedade é opt-in por funil (`settings.won_reason_required`) e o
+-- vocabulário é `settings.won_reasons`, ambos decididos no servidor
+-- (`lib/leads/campos-exigidos.ts`) — uma CHECK aqui tornaria o motivo exigido
+-- para todo install, inclusive os que nunca cadastraram lista nenhuma. A CHECK
+-- da PERDA (`crm_leads_lost_reason_required`) é de outra issue (#917) e não
+-- muda. Idempotente porque o `update.sh` do clone re-executa este bloco a cada
+-- atualização. Fica antes da varredura de `anon`, como todo apêndice novo.
+alter table public.crm_leads
+  add column if not exists won_reason text;
+
+comment on column public.crm_leads.won_reason is
+  'Motivo do ganho (issue #1536, migration 0420): por que este negócio foi fechado como ganho. null quando ninguém informou. Texto livre por padrão; settings.won_reasons do funil transforma em lista e settings.won_reason_required liga a obrigatoriedade — as duas decididas no servidor (lib/leads/campos-exigidos.ts), nunca por CHECK: o ganho não tinha exigência nenhuma antes e não pode ganhar uma para o install inteiro.';
+
 -- ---- publicar agente com o provedor personalizado (migration 0418, #1642) ----
 -- Para `custom`, o modelo é conferido na lista que o PRÓPRIO endpoint devolveu
 -- (`models_available` da credencial da versão), não no catálogo global
@@ -39754,3 +39771,32 @@ end $$;
 -- a lista de erros benignos do update.sh, então a atualização não diz
 -- "atualizado" com módulo fora do ar. Instalação nova não tem módulo: no-op.
 do $f$ begin perform public.fn_conferir_modulos_instalados(); end $f$;
+
+-- ---- retomada de negócio encerrado guarda a cadeia de tentativas (migration 0425) ----
+--
+-- Aditiva e idempotente: a coluna nasce null em toda linha existente, a FK é
+-- `on delete set null` (apagar um negócio solta o ponteiro da tentativa nova, em
+-- vez de recusar a exclusão ou propagá-la) e o índice é parcial — só a linha que
+-- aponta para alguém é consultada pela cadeia "tentativas até ganhar".
+alter table public.crm_leads
+  add column if not exists retomado_de_lead_id uuid;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'fk_crm_leads_retomado_de_lead'
+      and conrelid = 'public.crm_leads'::regclass
+  ) then
+    alter table public.crm_leads
+      add constraint fk_crm_leads_retomado_de_lead
+      foreign key (retomado_de_lead_id)
+      references public.crm_leads(id)
+      on delete set null;
+  end if;
+end $$;
+
+create index if not exists idx_crm_leads_retomado_de_lead
+  on public.crm_leads (retomado_de_lead_id)
+  where retomado_de_lead_id is not null;
