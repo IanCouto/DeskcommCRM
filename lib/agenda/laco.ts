@@ -116,15 +116,16 @@ export function gatilhoDaTransicao(de: SituacaoAnterior, para: Transicao): strin
       return "appointment.rescheduled";
     case "cancelled":
       return "appointment.cancelled";
-    // O desfecho nasce da TRANSIÇÃO, e `de === para` não é transição — é o
-    // guard de "uma vez cada" (#1612) escrito onde ele é testável: reenviar o
-    // mesmo status não produz gatilho novo, mesmo que um chamador esqueça o
-    // guard dele. O `atualizarAgendamento` já recusa antes (só monta
-    // transição quando o status mudou de fato); aqui é a segunda cerca.
+    // O desfecho nasce da TRANSIÇÃO, que só existe quando o status MUDOU de
+    // fato — `atualizarAgendamento` nem constrói transição para o mesmo status,
+    // e o tipo nem deixa representá-lo: `SituacaoAnterior` é
+    // "pending" | "confirmed" | null, porque compromisso concluído ou com falta
+    // não vira "de onde ele veio" de nada. É o guard de "uma vez cada" (#1612)
+    // escrito no compilador.
     case "completed":
-      return de === "completed" ? null : "appointment.completed";
+      return "appointment.completed";
     case "no_show":
-      return de === "no_show" ? null : "appointment.no_show";
+      return "appointment.no_show";
     default:
       return null;
   }
