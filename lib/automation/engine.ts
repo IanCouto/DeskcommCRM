@@ -89,6 +89,23 @@ export async function buildContext(admin: SupabaseClient, row: EventRow): Promis
           .maybeSingle();
         if (contact) context.contact = contact;
       }
+      // O NEGÓCIO, que faltava (#1612): o contexto de um evento de agenda era
+      // só contato, então `call_webhook` mandava o corpo sem `lead` — justamente
+      // para quem põe compromisso na agenda de outro sistema. O id vem NO
+      // PAYLOAD (`lead_ids`, gravado na emissão): deduzir do contato aqui
+      // reabriria a pergunta "qual dos abertos?" que
+      // `resolveActiveLeadForContact` já respondeu antes de emitir.
+      const leadIds = Array.isArray(row.payload?.lead_ids) ? row.payload.lead_ids : [];
+      const leadId = leadIds.find((id): id is string => typeof id === "string");
+      if (leadId) {
+        const { data: lead } = await admin
+          .from("crm_leads")
+          .select("*")
+          .eq("id", leadId)
+          .eq("organization_id", org)
+          .maybeSingle();
+        if (lead) context.lead = lead;
+      }
     }
   } else if (row.entity_kind === "message" && row.entity_id) {
     const contactId = row.payload.contact_id as string | undefined;
