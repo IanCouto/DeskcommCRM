@@ -64,6 +64,29 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * O endereço escrito e o link da reunião do compromisso (#1612), lidos da
+ * linha ATUAL (`context.appointment`, que o motor carrega filtrada por
+ * organização) e nunca do payload do evento.
+ *
+ * Eles não moram no `event_log`: nenhuma anonimização nem retenção o alcança,
+ * e o redact do contato anula justamente estas duas colunas no compromisso
+ * (0184). Lidos daqui, uma regra adiada que dispare depois do redact ou do
+ * cancelamento manda o que o banco tem agora — `null` inclusive.
+ */
+function localDoCompromisso(appointment: unknown): Record<string, unknown> | undefined {
+  if (!appointment || typeof appointment !== "object") return undefined;
+  const linha = appointment as Record<string, unknown>;
+  const texto = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+  // Mesma régua de quem mostra o link (consulta.ts, a tool MCP, o agente): só
+  // o link PRONTO sai — um Meet cancelado ou falho não vai para fora.
+  const meetingUrl = linha.meeting_state === "ready" ? texto(linha.meeting_url) : null;
+  return {
+    local: { tipo: texto(linha.location_kind), descricao: texto(linha.location_details) },
+    ...(meetingUrl ? { meeting_url: meetingUrl } : {}),
+  };
+}
+
+/**
  * O RESPONSÁVEL no corpo, e só por opt-in (#1612, mesma régua de #1528).
  *
  * `config.include_owner !== true` → a chave nem nasce: "sem opt-in, o
@@ -118,6 +141,7 @@ export async function executeCallWebhook(
   const leadPublic = projectPublicFields(ctx.context.lead, LEAD_PUBLIC_FIELDS);
   const contactPublic = projectPublicFields(ctx.context.contact, CONTACT_PUBLIC_FIELDS);
   const ownerPublic = await responsavelPublico(ctx, config);
+  const compromissoPublic = localDoCompromisso(ctx.context.appointment);
   const body = JSON.stringify({
     event: ctx.event.event_type,
     occurred_at: new Date().toISOString(),
@@ -125,6 +149,7 @@ export async function executeCallWebhook(
       ...ctx.event.payload,
       ...(leadPublic ? { lead: leadPublic } : {}),
       ...(contactPublic ? { contact: contactPublic } : {}),
+      ...(compromissoPublic ?? {}),
       // Só com `include_owner: true` (#1612) — ver `responsavelPublico`.
       ...(ownerPublic ? { owner: ownerPublic } : {}),
     },

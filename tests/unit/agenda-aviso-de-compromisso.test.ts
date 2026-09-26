@@ -269,10 +269,15 @@ describe("o aviso de compromisso (#1612)", () => {
       fim: FIM,
       situacao: "confirmed",
       tipo: { slug: SLUG_DO_TIPO, nome: NOME_DO_TIPO },
-      local: { tipo: "in_person", descricao: "Sala 2 — Rua das Flores, 100" },
-      meeting_url: MEET,
+      local: { tipo: "in_person" },
       lead_ids: [LEAD],
     });
+    // O endereço e o link estão na linha do compromisso e NÃO podem ir para o
+    // event_log, que o redact de LGPD não alcança: quem os manda para fora é o
+    // `call_webhook`, lendo a linha atual.
+    expect(payload.local).toEqual({ tipo: "in_person" });
+    expect(payload).not.toHaveProperty("meeting_url");
+    expect(JSON.stringify(payload)).not.toContain("Rua das Flores");
     // O nome que as condições de regra existentes leem continua no lugar.
     expect(payload.event_type_name).toBe(NOME_DO_TIPO);
   });

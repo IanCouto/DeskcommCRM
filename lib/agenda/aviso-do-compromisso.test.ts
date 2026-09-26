@@ -20,16 +20,18 @@ const BASE = {
 
 describe("payloadDoAviso", () => {
   it("carrega horário, situação, tipo e local — e mantém o contrato antigo", () => {
+    // A linha real traz o endereço e o link; eles NÃO podem chegar ao evento.
+    const linha = {
+      starts_at: "2026-09-02T13:00:00.000Z",
+      ends_at: "2026-09-02T13:30:00.000Z",
+      status: "confirmed",
+      location_kind: "in_person",
+      location_details: "Sala 2",
+      meeting_url: "https://meet.example.com/x",
+    };
     const payload = payloadDoAviso({
       ...BASE,
-      compromisso: {
-        starts_at: "2026-09-02T13:00:00.000Z",
-        ends_at: "2026-09-02T13:30:00.000Z",
-        status: "confirmed",
-        location_kind: "in_person",
-        location_details: "Sala 2",
-        meeting_url: "https://meet.example.com/x",
-      },
+      compromisso: linha,
       tipo: { slug: "limpeza-de-pele", name: "Limpeza de pele" },
       leadIds: ["eee00000-0000-4000-8000-00000000000e"],
     });
@@ -44,13 +46,28 @@ describe("payloadDoAviso", () => {
       fim: "2026-09-02T13:30:00.000Z",
       situacao: "confirmed",
       tipo: { slug: "limpeza-de-pele", nome: "Limpeza de pele" },
-      local: { tipo: "in_person", descricao: "Sala 2" },
-      meeting_url: "https://meet.example.com/x",
       lead_ids: ["eee00000-0000-4000-8000-00000000000e"],
     });
     // O responsável NUNCA mora aqui: o opt-in é da ação `call_webhook`.
     expect(payload).not.toHaveProperty("owner");
     expect(payload).not.toHaveProperty("owner_user_id");
+  });
+
+  it("o endereço escrito e o link da reunião nunca entram no evento", () => {
+    // O objeto vai para `event_log.payload`, que nenhuma anonimização alcança:
+    // o redact anula as duas colunas no compromisso (0184), e uma cópia aqui
+    // sobreviveria a ele. Quem as põe no webhook é o `call_webhook`, da linha.
+    const linha = {
+      location_kind: "in_person",
+      location_details: "Sala 2 — Rua das Flores, 100",
+      meeting_url: "https://meet.example.com/x",
+    };
+    const payload = payloadDoAviso({ ...BASE, compromisso: linha });
+
+    expect(payload.local).toEqual({ tipo: "in_person" });
+    expect(payload).not.toHaveProperty("meeting_url");
+    expect(JSON.stringify(payload)).not.toContain("Rua das Flores");
+    expect(JSON.stringify(payload)).not.toContain("meet.example.com");
   });
 
   it("`situacao` é a coluna, `transicao` é o caminho — remarcar não muda a situação", () => {
@@ -62,11 +79,6 @@ describe("payloadDoAviso", () => {
 
     expect(payload.transicao).toBe("rescheduled");
     expect(payload.situacao).toBe("confirmed");
-  });
-
-  it("sem meeting_url a chave nem nasce — `?` na issue é `?` no objeto", () => {
-    const payload = payloadDoAviso({ ...BASE, compromisso: { meeting_url: null } });
-    expect(payload).not.toHaveProperty("meeting_url");
   });
 
   it("sem leitura da linha, os campos novos viram `null` e as chaves continuam lá", () => {
@@ -83,7 +95,7 @@ describe("payloadDoAviso", () => {
       time_zone: "America/Sao_Paulo",
       // O nome que o emissor tinha em mãos é o fallback do tipo.
       tipo: { slug: null, nome: "Limpeza de pele" },
-      local: { tipo: null, descricao: null },
+      local: { tipo: null },
     });
   });
 

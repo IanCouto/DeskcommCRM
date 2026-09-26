@@ -16,13 +16,22 @@
  * responde o que o corpo contém — e é a pergunta que um receptor faz.
  *
  * ─── Os nomes das chaves ────────────────────────────────────────────────────
- * `inicio` · `fim` · `situacao` · `tipo {slug,nome}` · `local {tipo,descricao}`
- * · `meeting_url?` · `lead_ids[]`. As chaves antigas ficam intactas: `transicao`
+ * `inicio` · `fim` · `situacao` · `tipo {slug,nome}` · `local {tipo}` ·
+ * `lead_ids[]`. As chaves antigas ficam intactas: `transicao`
  * e `event_type_name` são contrato congelado (as condições de regra existentes
  * leem `event.event_type_name`), e `time_zone` É o fuso pedido na issue —
  * duplicá-lo como `fuso` criaria dois vocabulários para o mesmo dado, que é o
  * defeito que `responsavel-do-painel` e `autorParaTimeline` já pagaram caro
  * para evitar.
+ *
+ * ─── O que NÃO entra aqui: o endereço e o link da reunião ───────────────────
+ * Este objeto é gravado em `event_log.payload`, e nenhuma anonimização nem
+ * retenção alcança o `event_log`: o redact do contato anula `location_details`
+ * e `meeting_url` do compromisso (0184), e o Meet declara que derivado não é
+ * segundo cofre de URL. Uma cópia aqui sobreviveria aos dois, para sempre.
+ * Por isso o texto livre do local e o link saem só na ação `call_webhook`,
+ * lidos da linha ATUAL do compromisso (`context.appointment`) — já redigida
+ * ou cancelada quando for o caso.
  */
 
 /** O recorte da linha do compromisso que o corpo carrega. */
@@ -31,8 +40,6 @@ export interface RecorteDoCompromisso {
   ends_at?: unknown;
   status?: unknown;
   location_kind?: unknown;
-  location_details?: unknown;
-  meeting_url?: unknown;
   event_type_id?: unknown;
 }
 
@@ -81,7 +88,6 @@ const dataISO = (v: unknown): string | null => (typeof v === "string" && v ? v :
 export function payloadDoAviso(entrada: EntradaDoAviso): Record<string, unknown> {
   const compromisso = entrada.compromisso ?? null;
   const tipo = entrada.tipo ?? null;
-  const meetingUrl = texto(compromisso?.meeting_url);
 
   const leadIds = (entrada.leadIds ?? []).filter((id, i, a) => a.indexOf(id) === i);
 
@@ -106,11 +112,9 @@ export function payloadDoAviso(entrada: EntradaDoAviso): Record<string, unknown>
       // o emissor tinha em mãos — nunca `null` quando o nome era conhecido.
       nome: texto(tipo?.name) ?? entrada.nomeDoTipo,
     },
-    local: {
-      tipo: texto(compromisso?.location_kind),
-      descricao: texto(compromisso?.location_details),
-    },
-    ...(meetingUrl ? { meeting_url: meetingUrl } : {}),
+    // Só o TIPO do local: a descrição e o link não moram no event_log (ver o
+    // cabeçalho) — o `call_webhook` os acrescenta da linha atual.
+    local: { tipo: texto(compromisso?.location_kind) },
     lead_ids: leadIds,
   };
 }

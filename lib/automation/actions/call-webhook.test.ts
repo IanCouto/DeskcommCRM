@@ -405,6 +405,42 @@ describe("executeCallWebhook", () => {
     expect(data.owner).toEqual({ id: OWNER });
   });
 
+  it("o endereço e o link saem da linha ATUAL do compromisso, não do evento", async () => {
+    const ctx = ctxDeCompromisso();
+    ctx.context = {
+      appointment: {
+        id: COMPROMISSO.appointment_id,
+        location_kind: "google_meet",
+        location_details: "Sala 2",
+        meeting_state: "ready",
+        meeting_url: "https://meet.google.com/abc-defg-hij",
+      },
+    };
+
+    const data = await corpoRecebido(ctx, {});
+
+    expect(data.local).toEqual({ tipo: "google_meet", descricao: "Sala 2" });
+    expect(data.meeting_url).toBe("https://meet.google.com/abc-defg-hij");
+  });
+
+  it("compromisso já anonimizado ou com Meet cancelado: nada do que o banco anulou vai para fora", async () => {
+    const ctx = ctxDeCompromisso();
+    ctx.context = {
+      appointment: {
+        id: COMPROMISSO.appointment_id,
+        location_kind: "google_meet",
+        location_details: null,
+        meeting_state: "cancelled",
+        meeting_url: "https://meet.google.com/abc-defg-hij",
+      },
+    };
+
+    const data = await corpoRecebido(ctx, {});
+
+    expect(data.local).toEqual({ tipo: "google_meet", descricao: null });
+    expect(data).not.toHaveProperty("meeting_url");
+  });
+
   it("include_owner num compromisso SEM dono: a chave não nasce com null vazio", async () => {
     const ctx = ctxDeCompromisso();
     ctx.context = { appointment: { id: COMPROMISSO.appointment_id, owner_user_id: null } };

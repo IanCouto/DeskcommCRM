@@ -1077,7 +1077,7 @@ async function fecharOLaco(
  ): Promise<RecorteDoCompromisso | null> {
    const { data } = await supabase
      .from("calendar_appointments")
-     .select("starts_at, ends_at, status, location_kind, location_details, meeting_url, event_type_id")
+     .select("starts_at, ends_at, status, location_kind, event_type_id")
      .eq("organization_id", ctx.organization_id)
      .eq("id", appointmentId)
      .maybeSingle();
