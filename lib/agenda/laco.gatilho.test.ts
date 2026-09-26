@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { atividadeDaTransicao, gatilhoDaTransicao } from "./laco";
+import { atividadeDaTransicao, gatilhoDaTransicao, type SituacaoAnterior } from "./laco";
 
 describe("gatilhoDaTransicao", () => {
   it("nascer pendente ou confirmado é o mesmo gatilho: foi marcado", () => {
@@ -40,9 +40,9 @@ describe("gatilhoDaTransicao", () => {
     // `appointment.outcome_confirmed` (o outro emissor) só nasce para falta.
     expect(gatilhoDaTransicao("confirmed", "completed")).toBe("appointment.completed");
     expect(gatilhoDaTransicao("confirmed", "no_show")).toBe("appointment.no_show");
-    // Da MESMA situação anterior: uma correção (compareu → faltou) é outro
-    // fato, e cada um tem o seu gatilho.
-    expect(gatilhoDaTransicao("completed", "no_show")).toBe("appointment.no_show");
+    // Do PENDENTE também: compromisso que passou sem confirmação e foi
+    // registrado no histórico é o mesmo fato para quem recebe o aviso.
+    expect(gatilhoDaTransicao("pending", "completed")).toBe("appointment.completed");
   });
 
   it("nascer já cancelado ou concluído não é gatilho de nada", () => {
@@ -50,10 +50,16 @@ describe("gatilhoDaTransicao", () => {
     expect(gatilhoDaTransicao(null, "completed")).toBeNull();
   });
 
-  it("reenviar o mesmo status não emite de novo: é o guard de 'uma vez cada'", () => {
-    // `atualizarAgendamento` só constrói transição quando o status MUDOU, mas
-    // a régua pura também recusa — dois emissores, a mesma regra.
-    expect(gatilhoDaTransicao("completed", "completed")).toBeNull();
-    expect(gatilhoDaTransicao("no_show", "no_show")).toBeNull();
+  it("o 'mesmo desfecho' não cabe nem no tipo: SituacaoAnterior nunca é completed/no_show", () => {
+    // `SituacaoAnterior` é "pending" | "confirmed" | null — compromisso já
+    // concluído não é "de onde ele veio" de nada, então `completed → completed`
+    // nem se escreve (o compilador recusa). É a metade COMPILADORA do guard de
+    // "uma vez cada" (#1612); a outra é do handler, que só monta transição
+    // quando o status mudou de fato — provada em
+    // tests/unit/agenda-aviso-de-compromisso.test.ts.
+    const anteriores: SituacaoAnterior[] = [null, "pending", "confirmed"];
+    const nomes = anteriores.map(String);
+    expect(nomes).not.toContain("completed");
+    expect(nomes).not.toContain("no_show");
   });
 });
