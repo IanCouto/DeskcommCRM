@@ -37,6 +37,39 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  // ─── CAMPOS OBRIGATÓRIOS (issue #1536) ───
+  "Campos obrigatórios": { es: "Campos obligatorios" },
+  // Editor de `obrigatorio_em` no funil (CR do mantenedor no PR #1688).
+  "Exigir o preenchimento:": { es: "Exigir el llenado:" },
+  "Exigir em": { es: "Exigir en" },
+  "Ao ganhar": { es: "Al ganar" },
+  "Ao perder": { es: "Al perder" },
+  "arquivada": { es: "archivada" },
+  "Sem marca nenhuma este campo nunca é exigido — é o comportamento de sempre. Marcado, ele precisa estar preenchido para o negócio entrar na etapa escolhida ou ser fechado como ganho/perdido.":
+    {
+      es: "Sin ninguna marca este campo nunca se exige — es el comportamiento de siempre. Marcado, debe estar completado para que el negocio entre en la etapa elegida o se cierre como ganado/perdido.",
+    },
+  "Este funil exige alguns dados antes de mover o negócio. Preencha o que falta para continuar.": {
+    es: "Este embudo exige algunos datos antes de mover el negocio. Completa lo que falta para continuar.",
+  },
+  "Selecione…": { es: "Selecciona…" },
+  "Mover agora": { es: "Mover ahora" },
+  "Motivos de ganho (separados por vírgula)": {
+    es: "Motivos de negocio ganado (separados por comas)",
+  },
+  "Sem motivos cadastrados o motivo de ganho é texto livre. Com a lista, só o que está nela é aceito.": {
+    es: "Sin motivos registrados, el motivo de negocio ganado es texto libre. Con la lista, solo se acepta lo que está en ella.",
+  },
+  "Exigir motivo de ganho ao fechar como ganho": {
+    es: "Exigir motivo al cerrar como ganado",
+  },
+  "Motivo do ganho": { es: "Motivo del negocio ganado" },
+  "Preencha os campos obrigatórios antes de continuar: {campos}.": {
+    es: "Completa los campos obligatorios antes de continuar: {campos}.",
+  },
+  "Este motivo de ganho não está na lista do funil. Escolha um dos motivos cadastrados.": {
+    es: "Este motivo de negocio ganado no está en la lista del embudo. Elige uno de los motivos registrados.",
+  },
   "Script para instalar no site": { es: "Script para instalar en el sitio" },
   "Salve e ligue a captura do Google ou do site. Depois, copie este script uma única vez para todas as páginas do seu site, antes de fechar o head. Se trocar os números configurados, copie o script novamente.": { es: "Guarde y active la captura de Google o del sitio. Después, copie este script una sola vez en todas las páginas de su sitio, antes de cerrar el head. Si cambia los números configurados, vuelva a copiar el script." },
   "Script copiado.": { es: "Script copiado." },
@@ -95,7 +128,6 @@ export const DICIONARIO: Traducoes = {
   "Verificar ou tentar novamente": { es: "Verificar o volver a intentar" },
   "Integração atual: Data Manager. Ative a Data Manager API no projeto Google Cloud usado na autorização. A confirmação pode levar alguns minutos.": { es: "Integración actual: Data Manager. Activa la Data Manager API en el proyecto Google Cloud usado en la autorización. La confirmación puede tardar unos minutos." },
   "Integração anterior do Google Ads. Novas contas podem precisar autorizar a Data Manager API.": { es: "Integración anterior de Google Ads. Las cuentas nuevas pueden necesitar autorizar la Data Manager API." },
-
   "Sobre a empresa": { es: "Sobre la empresa" },
   // Rascunho sugerido por integração (issue #1611) — a faixa do Composer.
   "Texto sugerido por": { es: "Texto sugerido por" },
@@ -6954,7 +6986,6 @@ export const DICIONARIO: Traducoes = {
   "Abrir conversa com": { es: "Abrir conversación con" },
   "no Inbox": { es: "en el Inbox" },
   "sem ler": { es: "sin leer" },
-  "Selecione…": { es: "Selecciona…" },
   "Formato E.164": { es: "Formato E.164" },
   "Dados inválidos": { es: "Datos inválidos" },
   "Contato atualizado": { es: "Contacto actualizado" },
