@@ -12,13 +12,13 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Adicionado
 
-- **Configure a captura Google e o envio de leads qualificados** Conversões permite configurar o WhatsApp de destino dos cliques Google, preservando gclid, gbraid e wbraid. Um administrador pode escolher uma etapa de qualificação e uma ação Google distinta da compra. Qualificação não envia valor monetário, não é repetida ao voltar à etapa e tem diagnóstico e reprocessamento próprios. As conexões existentes continuam funcionando e a nova regra começa desligada. Crédito: @gustavorodcruz96.
+- **Configure a captura Google e o envio de leads qualificados** Conversões permite configurar o WhatsApp de destino dos cliques Google, preservando gclid, gbraid e wbraid. Um administrador pode escolher uma etapa de qualificação e uma ação Google distinta da compra. Qualificação não envia valor monetário, não é repetida ao voltar à etapa e tem diagnóstico e reprocessamento próprios. As conexões existentes continuam funcionando e a nova regra começa desligada. Contribuição de @gustavorodcruz96 (#1566).
 
-- **Acompanhe e reprocesse conversões de anúncios pelo CRM** A tela de Conversões permite verificar ou tentar novamente uma venda pendente. Novas conexões do Google podem usar a Data Manager API, com acompanhamento do processamento; conexões existentes continuam disponíveis. Recibos inválidos e rejeições deixam de aparecer como sucesso, e eventos de teste da Meta ficam separados das vendas reais. Crédito: @gustavorodcruz96.
+- **Acompanhe e reprocesse conversões de anúncios pelo CRM** A tela de Conversões permite verificar ou tentar novamente uma venda pendente. Novas conexões do Google podem usar a Data Manager API, com acompanhamento do processamento; conexões existentes continuam disponíveis. Recibos inválidos e rejeições deixam de aparecer como sucesso, e eventos de teste da Meta ficam separados das vendas reais. Contribuição de @gustavorodcruz96 (#1566).
 
-- **Instale o rastreio de origem nos botões de WhatsApp do site** Conversões oferece um script para copiar e instalar no site. Ele preserva os identificadores da visita durante a navegação na mesma aba e ajusta os links dos números configurados, incluindo botões adicionados depois. O CRM gera o código curto no clique e associa a mensagem à origem quando o visitante o envia. A instalação é opcional e tem instruções e limites na própria tela. Crédito: @gustavorodcruz96.
+- **Instale o rastreio de origem nos botões de WhatsApp do site** Conversões oferece um script para copiar e instalar no site. Ele preserva os identificadores da visita durante a navegação na mesma aba e ajusta os links dos números configurados, incluindo botões adicionados depois. O CRM gera o código curto no clique e associa a mensagem à origem quando o visitante o envia. A instalação é opcional e tem instruções e limites na própria tela. Contribuição de @gustavorodcruz96 (#1566).
 
-- **O instalador pergunta em que idioma ele mesmo fala — português ou español** O `install.sh` estava inteiramente em português, mesmo permitindo escolher espanhol como idioma da aplicação web instalada: um operador hispanohablante precisava entender português para concluir a própria instalação. Agora a primeira pergunta interativa, antes de qualquer outra saída, é o idioma da instalação (Português/Español), e as mensagens do instalador saem nesse idioma; a saída de outros programas, como `docker` e `git`, continua como vem deles. A escolha é gravada em `DESKCOMM_IDIOMA_CLI` no `.env` e, nas reexecuções, o `install.sh` a lê de lá e não pergunta de novo, nem com `--yes`. Quem prefere fixá-la sem perguntar pode rodar com `DESKCOMM_IDIOMA_CLI=es` (ou `pt-BR`) no ambiente. Sem escolha e sem terminal, o instalador fala português, como sempre falou. O espanhol exige bash 4.4 ou superior (o CentOS 7 traz o 4.2): em um bash mais antigo o instalador avisa, em português e em espanhol, e segue em português. Fora do escopo desta passada: `update.sh`, `backup.sh`, `diagnostico.sh` e os demais scripts do kit seguem só em português, mesmo com a chave no `.env`; ficam para uma extensão do mesmo mecanismo (`hostgator-setup-kit/_i18n.sh`).
+- **O instalador pergunta em que idioma ele mesmo fala — português ou español** O `install.sh` estava inteiramente em português, mesmo permitindo escolher espanhol como idioma da aplicação web instalada: um operador hispanohablante precisava entender português para concluir a própria instalação. Agora a primeira pergunta interativa, antes de qualquer outra saída, é o idioma da instalação (Português/Español), e as mensagens do instalador saem nesse idioma; a saída de outros programas, como `docker` e `git`, continua como vem deles. A escolha é gravada em `DESKCOMM_IDIOMA_CLI` no `.env` e, nas reexecuções, o `install.sh` a lê de lá e não pergunta de novo, nem com `--yes`. Quem prefere fixá-la sem perguntar pode rodar com `DESKCOMM_IDIOMA_CLI=es` (ou `pt-BR`) no ambiente. Sem escolha e sem terminal, o instalador fala português, como sempre falou. O espanhol exige bash 4.4 ou superior (o CentOS 7 traz o 4.2): em um bash mais antigo o instalador avisa, em português e em espanhol, e segue em português. Fora do escopo desta passada: `update.sh`, `backup.sh`, `diagnostico.sh` e os demais scripts do kit seguem só em português, mesmo com a chave no `.env`; ficam para uma próxima passada. Contribuição de @JowaniOrantes (#1689).
 
 - **O Jev passa a observar qual agente deve atender, ao lado do seu roteador de intenção** O Jev ganha a terceira tarefa: **Escolher qual agente atende**. Onde há um roteador de intenção ativo (**IA › Roteadores**), a cada mensagem nova do cliente a sua IA de sempre escolhe a intenção — e, com ela, o agente que atende. O Jev responde a mesma pergunta, entre as mesmas intenções, ao mesmo tempo. Enquanto ele só observa, a resposta ao cliente **não espera por ele**: a resposta dele é guardada quando chega.
 
@@ -45,12 +45,12 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
   Se a instalação voltar para a versão anterior, a tarefa deixa de rodar lá e o estado dela fica guardado. Voltando para a versão da onda 1 do Jev (1.48), o primeiro clique no cartão de lá apaga o estado das tarefas — de volta a esta versão, a manipulação reaparece como nova, observando. E a 1.48 não sabe pausar só o clima: se você o pausou aqui com "Pausar esta tarefa", lá ele volta a medir enquanto o Jev estiver ligado. Para parar de vez numa volta à 1.48, use "Desligar" no cartão.
 
 - **A integração que repete o pedido não cria dois textos sugeridos** Quando a integração que cria o texto sugerido repete o pedido — timeout, rede, retentativa do
-  ERP —, a porta `POST /api/v1/conversations/{id}/drafts` agora aceita `Idempotency-Key`, como os
+  ERP —, a criação do texto sugerido pela API agora aceita o cabeçalho `Idempotency-Key`, como os
   outros POSTs de criação do produto: a mesma chave devolve a MESMA resposta gravada, sem criar um
   segundo rascunho, e a mesma chave com conteúdo diferente responde 409. Sem o cabeçalho, nada muda
   para quem já integra.
 
-  Crédito: @hiro-nikaitou.
+  Contribuição de @hiro-nikaitou (#1704).
 
 - **A conversa pode abrir com um texto sugerido por outro sistema, pronto para revisar** Quem integra o CRM com outro sistema (ERP, formulário, automação) precisa mandar
   uma mensagem que **só pode sair de uma pessoa**: a cobrança vencida, o documento
@@ -59,8 +59,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
   copiar e colar o texto à mão.
 
   Agora o texto fica guardado no servidor: a integração cria um rascunho pela API
-  (`POST /api/v1/conversations/{id}/drafts`) ou pela ferramenta MCP
-  `crm_create_conversation_draft` e recebe o link da conversa.
+  ou pela ferramenta de criar rascunho do servidor MCP, e recebe o link da conversa.
 
   Ao abrir o link, a caixa de entrada já mostra o texto no campo de resposta, com o
   aviso "Texto sugerido por {origem}. Revise antes de enviar." — e nada sai sem o
@@ -81,7 +80,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 - **A Central de avisos mostra os mais graves primeiro** Na aba Abertos, os avisos críticos vêm antes dos de atenção, e estes antes dos informativos; entre avisos da mesma gravidade, o mais recente vem primeiro. Antes, a lista era só por data, e um aviso crítico antigo podia ficar embaixo dos informativos de hoje — ou fora da tela, passados 50 avisos. A aba Resolvidos continua por data. Uma frase no topo da lista explica a ordem. Nada a fazer na atualização.
 
-- **Em espanhol, os erros da API deixam de ter anglicismos e passam a tratar por "tú"** As mensagens de erro da API em espanhol perderam anglicismos soltos ("Agent no encontrado" virou "Agente no encontrado"; "credential", "runs" e "sync" ganharam tradução), passaram a tratar por "tú", inclusive nas telas de roteiros e skills, e "router" virou "enrutador"; "pipeline" e "stage" nas mensagens de erro viraram "embudo" e "etapa", os termos que o resto do produto já usa. Para quem usa em português nada muda, e não exige ação de quem opera a instalação.
+- **Em espanhol, os erros da API deixam de ter anglicismos e passam a tratar por "tú"** As mensagens de erro da API em espanhol perderam anglicismos soltos ("Agent no encontrado" virou "Agente no encontrado"; "credential", "runs" e "sync" ganharam tradução), passaram a tratar por "tú", inclusive nas telas de roteiros e skills, e "router" virou "enrutador"; "pipeline" e "stage" nas mensagens de erro viraram "embudo" e "etapa", os termos que o resto do produto já usa. Para quem usa em português nada muda, e não exige ação de quem opera a instalação. Contribuição de @JowaniOrantes (#1691).
 
 - **O cartão do Jev passa a mostrar cada tarefa com o seu próprio estado** Em **IA › Provedores**, com o Jev ligado, o cartão agora lista as tarefas que ele faz, cada uma com o seu estado ("Só observa" ou "Decide") e o seu botão "Deixar o Jev decidir" — que agora pede confirmação antes de valer, dizendo o que muda para o cliente naquela tarefa e que dá para voltar a só observar quando quiser. Pausar e voltar a só observar seguem com um clique só. O clima (**Medir o clima da conversa**) continua exatamente como estava: quem deixou o Jev decidindo segue decidindo, quem estava só observando segue observando. Nada é reescrito na configuração da empresa.
 
@@ -94,7 +93,7 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Corrigido
 
-- **O fuso da organização vira o padrão no horário do agente e do atendente, e faltavam textos em espanhol** Ao ligar o horário de funcionamento no gatilho de um agente e ao definir o horário de um atendente, o fuso sugerido era sempre `America/Sao_Paulo`. Agora é o da organização, desde que seja um fuso válido e, no horário do atendente, que esteja entre os fusos oferecidos na lista; caso contrário continua `America/Sao_Paulo`. Em espanhol, apareciam em português os motivos de exclusão de um contato numa campanha ("Sin teléfono en el registro"…) e o resumo do gatilho de um fluxo (Silêncio, "entró en" uma etapa, "no disponible"). Para quem usa em português nada muda, e não exige ação de quem opera a instalação.
+- **O fuso da organização vira o padrão no horário do agente e do atendente, e faltavam textos em espanhol** Ao ligar o horário de funcionamento no gatilho de um agente e ao definir o horário de um atendente, o fuso sugerido era sempre `America/Sao_Paulo`. Agora é o da organização, desde que seja um fuso válido e, no horário do atendente, que esteja entre os fusos oferecidos na lista; caso contrário continua `America/Sao_Paulo`. Em espanhol, apareciam em português os motivos de exclusão de um contato numa campanha ("Sin teléfono en el registro"…) e o resumo do gatilho de um fluxo (Silêncio, "entró en" uma etapa, "no disponible"). Para quem usa em português nada muda, e não exige ação de quem opera a instalação. Contribuição de @JowaniOrantes (#1690).
 
 - **Onboarding com OpenAI não diz mais que uma chave boa falhou no teste de crédito** O teste de crédito do onboarding tratava como falha o 400 que um modelo de raciocínio devolve ao gastar o único token permitido: com a chave boa e com crédito, a tela dizia que o teste não tinha passado, mostrava o erro do provedor em inglês e sugeria falta de crédito. Esse 400 passa a contar como prova bem-sucedida, e quando o teste falha de verdade a tela explica o motivo em português, sem o corpo cru do provedor. Nada muda na publicação do atendente: ela continua exigindo o número de WhatsApp conectado. (#1693)
 
@@ -103,9 +102,11 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 - **O relatório de acesso do titular passa a incluir o que a anonimização apaga** Quem pedia acesso aos próprios dados recebia um relatório que omitia duas coisas que
   o sistema guardava e a anonimização apagava: o texto que outra integração sugeriu para
   enviar à pessoa e as propostas de campo que a IA ouviu na conversa. Nada a fazer na VPS:
-  a correção vem com a atualização.
+  a correção vem com a atualização. Contribuição de @hiro-nikaitou (#1703).
 
-- **Skills antigas deixam de derrubar a tela de habilidades da IA** Instalações atualizadas a partir do formato antigo de skills agora reconciliam os ponteiros automaticamente. A tela continua disponível mesmo quando encontra um registro legado incompleto, e desinstalar uma skill antiga não apaga seu histórico de versões.
+- **Skills antigas deixam de derrubar a tela de habilidades da IA** Instalações atualizadas a partir do formato antigo de skills agora reconciliam os ponteiros automaticamente. A tela continua disponível mesmo quando encontra um registro legado incompleto, e desinstalar uma skill antiga não apaga seu histórico de versões. Contribuição de @423313 (#1705).
+
+- **Teste novo avisa em segundos quando o limite de ferramentas do agente sai da conta** Teste interno, para quem desenvolve: ele confere o limite de ferramentas por agente contra o pacote "Atender" e acusa a mudança em segundos, antes do teste de tela de 20 minutos que era o único a perceber. Nada muda para quem opera a VPS. Contribuição de @realLoganLuo (#1698).
 
 ## [1.51.0] — 2026-09-26
 
