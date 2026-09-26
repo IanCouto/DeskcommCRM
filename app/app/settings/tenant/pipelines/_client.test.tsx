@@ -230,15 +230,20 @@ describe("o input de opções de um campo de lista fechada", () => {
 describe("editor de obrigatorio_em do funil (#1536)", () => {
   const ETAPA_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const ETAPA_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const FUNIL_MARCADO_ID = "33333333-3333-4333-8333-333333333333";
   const ETAPAS: Record<string, EtapaDoFunil[]> = {
     [FUNIL.id]: [
+      { id: ETAPA_A, name: "Avaliação", is_archived: false },
+      { id: ETAPA_B, name: "Proposta (antiga)", is_archived: true },
+    ],
+    [FUNIL_MARCADO_ID]: [
       { id: ETAPA_A, name: "Avaliação", is_archived: false },
       { id: ETAPA_B, name: "Proposta (antiga)", is_archived: true },
     ],
   };
   /** Um campo JÁ marcado no settings — o estado de quem abre para desligar. */
   const FUNIL_MARCADO: PipelineRow = {
-    id: "33333333-3333-4333-8333-333333333333",
+    id: FUNIL_MARCADO_ID,
     name: "Vendas",
     slug: "vendas-marcado",
     vocabulary: null,
