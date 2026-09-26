@@ -61,6 +61,11 @@ function readLostReasons(settings: Record<string, unknown> | null): string[] {
   return Array.isArray(r) ? (r as string[]) : [];
 }
 
+
+function readWonReasons(settings: Record<string, unknown> | null): string[] {
+  const r = (settings as { won_reasons?: unknown } | null)?.won_reasons;
+  return Array.isArray(r) ? r.filter((v): v is string => typeof v === "string") : [];
+}
 export function PipelinesClient({
   pipelines,
   podeEditarConfig,
@@ -115,6 +120,10 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
   const [won, setWon] = useState(v.won ?? "Ganho");
   const [lost, setLost] = useState(v.lost ?? "Perdido");
   const [reasonsText, setReasonsText] = useState(readLostReasons(pipeline.settings).join(", "));
+  const [wonReasonsText, setWonReasonsText] = useState(readWonReasons(pipeline.settings).join(", "));
+  const [wonRequired, setWonRequired] = useState(
+    (pipeline.settings as { won_reason_required?: unknown } | null)?.won_reason_required === true,
+  );
   const [fields, setFields] = useState<CustomFieldDef[]>(camposDoFunil(pipeline.settings));
   const [isPending, startTransition] = useTransition();
 
@@ -148,10 +157,17 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
+    const wonReasons = wonReasonsText
+      .split(",")
+      .map((s2) => s2.trim())
+      .filter((s2) => s2.length > 0);
+
     const patch: PipelineConfigPatch = {
       vocabulary: { lead, deal, won, lost },
       fields: ok,
       lost_reasons: reasons,
+      won_reasons: wonReasons,
+      won_reason_required: wonRequired,
     };
     startTransition(async () => {
       const r = await updatePipelineConfig(pipeline.id, patch);
@@ -187,6 +203,24 @@ function PipelineEditor({ pipeline }: { pipeline: PipelineRow }) {
       <div className="space-y-1">
         <Label className="text-xs">{t("Motivos de perda (separados por vírgula)")}</Label>
         <Input value={reasonsText} onChange={(e) => setReasonsText(e.target.value)} />
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-xs">{t("Motivos de ganho (separados por vírgula)")}</Label>
+        <Input value={wonReasonsText} onChange={(e) => setWonReasonsText(e.target.value)} />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Sem motivos cadastrados o motivo de ganho é texto livre. Com a lista, só o que está nela é aceito.",
+          )}
+        </p>
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={wonRequired}
+            onChange={(e) => setWonRequired(e.target.checked)}
+          />
+          {t("Exigir motivo de ganho ao fechar como ganho")}
+        </label>
       </div>
 
       <div className="space-y-2">
