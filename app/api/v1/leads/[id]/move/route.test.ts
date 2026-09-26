@@ -35,7 +35,7 @@ const DEPOIS_DA_ATIVIDADE = "2026-09-15T12:00:01.500Z";
  * `updated_at` de novo. Quem relê o lead antes da atividade devolve um valor
  * que já não vale — e o próximo arrastar do mesmo card cai na OCC (issue #916).
  */
-function bancoFalso(settingsDoFunil: unknown = null) {
+function bancoFalso(settingsDoFunil: unknown = null, stageExtra: Record<string, unknown> = {}) {
   const banco = { updatedAt: CARREGADO, stageId: STAGE_A, ultimoPatch: null as Record<string, unknown> | null };
   vi.mocked(emitLeadActivity).mockImplementation(async () => {
     banco.updatedAt = DEPOIS_DA_ATIVIDADE;
@@ -71,7 +71,12 @@ function bancoFalso(settingsDoFunil: unknown = null) {
           return chain;
         },
         maybeSingle: async () => ({
-          data: { id: (chain as { id?: string }).id, pipeline_id: PIPELINE_ID, name: "Etapa" },
+          data: {
+            id: (chain as { id?: string }).id,
+            pipeline_id: PIPELINE_ID,
+            name: "Etapa",
+            ...stageExtra,
+          },
           error: null,
         }),
       };
@@ -220,6 +225,78 @@ describe("POST /api/v1/leads/[id]/move", () => {
       { params: Promise.resolve({ id: LEAD_ID }) },
     );
     expect(response.status).toBe(200);
+  });
+
+  // ── A MESMA ETAPA PASSA (CR do mantenedor) ──────────────────────────────────
+  //
+  // O card já está NA coluna exigente: arrastar dentro dela é REORDENAÇÃO, não
+  // entrada. Sem a comparação destino × `lead.stage_id`, a régua respondia 422
+  // e o card ficava preso na própria coluna — ninguém conseguia mudar a posição
+  // de um card num funil que exige campo. Os dois casos abaixo partem do lead em
+  // STAGE_A e mandam STAGE_A de volta; um deles com a exigência declarada na
+  // etapa, o outro com `won_reason_required`, que é o que prendia TODO card
+  // antigo da coluna Ganho (`won_reason` nasce `null`).
+  it("mesma etapa passa: reordenar dentro da coluna que exige campo não cai na régua", async () => {
+    const exigenteNaOrigem = {
+      fields: [
+        {
+          key: "concorrente",
+          label: "Concorrente",
+          type: "text",
+          obrigatorio_em: { etapas: [STAGE_A] },
+        },
+      ],
+    };
+    const falso = bancoFalso(exigenteNaOrigem);
+    vi.mocked(createClient).mockResolvedValue(falso as never);
+    const { POST } = await import("./route");
+
+    const response = await POST(
+      request({ stage_id: STAGE_A, position_in_stage: 1500, expected_updated_at: CARREGADO }),
+      { params: Promise.resolve({ id: LEAD_ID }) },
+    );
+
+    expect(response.status).toBe(200);
+    // A escrita aconteceu (a posição muda) — o card não foi devolvido.
+    expect(falso.banco.ultimoPatch).toMatchObject({ stage_id: STAGE_A });
+  });
+
+  it("mesma etapa na coluna Ganho: `won_reason_required` não trava a reordenação", async () => {
+    // O card antigo da coluna tem `won_reason` nulo — exigir o motivo DELE ao
+    // reordenar tornaria o ganho impossível de reordenar para sempre.
+    const falso = bancoFalso({ won_reason_required: true }, { is_won: true });
+    vi.mocked(createClient).mockResolvedValue(falso as never);
+    const { POST } = await import("./route");
+
+    const response = await POST(
+      request({ stage_id: STAGE_A, position_in_stage: 2500, expected_updated_at: CARREGADO }),
+      { params: Promise.resolve({ id: LEAD_ID }) },
+    );
+
+    expect(response.status).toBe(200);
+    // E a reordenação NÃO escreve motivo nenhum: não houve fechamento novo.
+    expect(falso.banco.ultimoPatch?.won_reason).toBeUndefined();
+  });
+
+  it("mudança de etapa de verdade continua barrada pela régua (o atalho não vira buraco)", async () => {
+    const exigenteNaOrigem = {
+      fields: [
+        {
+          key: "concorrente",
+          label: "Concorrente",
+          type: "text",
+          obrigatorio_em: { etapas: [STAGE_A] },
+        },
+      ],
+    };
+    vi.mocked(createClient).mockResolvedValue(bancoFalso(exigenteNaOrigem) as never);
+    const { POST } = await import("./route");
+
+    const response = await POST(
+      request({ stage_id: STAGE_B, position_in_stage: 1500, expected_updated_at: CARREGADO }),
+      { params: Promise.resolve({ id: LEAD_ID }) },
+    );
+    expect(response.status).toBe(422);
   });
 });
 
