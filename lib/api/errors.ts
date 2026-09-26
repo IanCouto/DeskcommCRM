@@ -205,6 +205,17 @@ export const ApiErrorCodes = {
   // retomar, e criar aí duplicaria o card que já está no quadro.
   reabertura_lead_aberto: "reabertura_lead_aberto",
 
+  // ─── CAMPOS OBRIGATÓRIOS E MOTIVO DE GANHO (issue #1536) ───
+  //
+  // As duas recusas do núcleo novo, cada uma com a sua demanda: a primeira pede
+  // PREENCHER (o `details.faltando` nomeia chave e rótulo de cada campo — e
+  // quando o que falta é o motivo de ganho a chave é `won_reason`, um caso do
+  // mesmo contrato, não um código à parte), a segunda pede ESCOLHER da lista
+  // cadastrada (`settings.won_reasons`). Colapsá-las mandaria quem já informou
+  // escolher sem lista, e quem não informou digitar sem caminho.
+  required_fields_missing: "required_fields_missing",
+  won_reason_invalid: "won_reason_invalid",
+
   // ─── AVISO DE CASO NO WHATSAPP (migration 0292, onda 8) ───
   //
   // Declarados aqui pelo mesmo motivo dos blocos acima: `fail()` aceita

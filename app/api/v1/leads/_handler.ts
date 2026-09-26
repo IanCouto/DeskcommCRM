@@ -25,6 +25,12 @@ import {
   modoDeReabertura,
   recusaReabertura,
 } from "@/lib/leads/reabertura";
+import {
+  recusaDeCamposObrigatorios,
+  recusaDeMotivoDoGanho,
+  settingsDoFunil,
+  validaCamposExigidos,
+} from "@/lib/leads/campos-exigidos";
 import { ORIGEM_DA_PLANILHA } from "@/lib/leads/planilha";
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
 import { moedaDaOrganizacao } from "@/lib/catalogo/moeda-da-org";
@@ -819,6 +825,11 @@ export interface MoveLeadAdminInput {
    * exigir ou não é `lib/leads/motivo-da-perda.ts`, o mesmo dos outros caminhos.
    */
   lost_reason?: string | null;
+  /**
+   * O motivo do ganho, quando a etapa de destino fecha o negócio como ganho
+   * (issue #1536) — espelho do `lost_reason`, mesma disciplina de escrita.
+   */
+  won_reason?: string | null;
 }
 
 export async function moveLeadHandler(
@@ -918,6 +929,44 @@ export async function moveLeadHandler(
     position = maxRow?.position_in_stage ? Number(maxRow.position_in_stage) + 1000 : 1000;
   }
 
+  // ── OS CAMPOS OBRIGATÓRIOS (issue #1536) ────────────────────────────────────
+  //
+  // Este handler é o escritor de etapa de TODOS os clientes que não são o board
+  // (MCP `crm_move_lead_stage`, ações de automação), então a régua é a MESMA do
+  // arrasto, decidida pela MESMA função: o que falta vira 422 com
+  // `details.faltando`, e a tool do MCP devolve a frase ao modelo — que pergunta
+  // ao cliente ou passa para o humano, em vez de mover calado.
+  const settings = await settingsDoFunil(supabase, lead.pipeline_id);
+  const vereditoDeCampos = validaCamposExigidos({
+    lead: lead as Record<string, unknown>,
+    settingsDoFunil: settings,
+    destino: {
+      stageId: stage.id,
+      desfecho: stage.is_won ? "won" : stage.is_lost ? "lost" : null,
+    },
+    motivoDeGanho: input.won_reason ?? null,
+  });
+  if (vereditoDeCampos.faltando.length > 0) {
+    const recusa = recusaDeCamposObrigatorios(vereditoDeCampos.faltando, ctx.idioma);
+    throw new ApiError(
+      422,
+      recusa.codigo,
+      { faltando: vereditoDeCampos.faltando },
+      ctx.requestId,
+      recusa.mensagem,
+    );
+  }
+  if (stage.is_won) {
+    const recusaGanho = recusaDeMotivoDoGanho({
+      motivo: input.won_reason,
+      settingsDoFunil: settings,
+      idioma: ctx.idioma,
+    });
+    if (recusaGanho) {
+      throw new ApiError(422, recusaGanho.codigo, undefined, ctx.requestId, recusaGanho.mensagem);
+    }
+  }
+
   // ── O MOTIVO DA PERDA (issue #917) ──────────────────────────────────────────
   //
   // Este handler é o escritor de etapa de TODOS os clientes que não são o board
@@ -942,6 +991,9 @@ export async function moveLeadHandler(
       position_in_stage: position,
       updated_at: nowIso,
       ...veredito.patch,
+      ...(stage.is_won && input.won_reason?.trim()
+        ? { won_reason: input.won_reason.trim() }
+        : {}),
     })
     .eq("id", leadId)
     .eq("updated_at", lead.updated_at)
