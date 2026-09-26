@@ -63,6 +63,12 @@ export const DICIONARIO: Traducoes = {
   "Exigir motivo de ganho ao fechar como ganho": {
     es: "Exigir motivo al cerrar como ganado",
   },
+  "Negócio encerrado que volta abre um negócio novo": {
+    es: "Un negocio cerrado que vuelve abre un negocio nuevo",
+  },
+  "Desligado, arrastar um negócio perdido ou ganho para uma etapa aberta reabre o mesmo negócio. Ligado, o encerrado fica como está e o quadro oferece criar uma nova tentativa com o mesmo contato.": {
+    es: "Desactivado, arrastrar un negocio perdido o ganado a una etapa abierta reabre el mismo negocio. Activado, el cerrado queda como está y el tablero ofrece crear un nuevo intento con el mismo contacto.",
+  },
   "Motivo do ganho": { es: "Motivo del negocio ganado" },
   "Preencha os campos obrigatórios antes de continuar: {campos}.": {
     es: "Completa los campos obligatorios antes de continuar: {campos}.",

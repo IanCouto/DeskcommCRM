@@ -24,7 +24,6 @@ import type { HandlerCtx } from "@/lib/api/handlers/types";
 import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
-import { traduzir } from "@/lib/i18n/dicionario";
 import { retomarLeadSchema, validateRequest } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
@@ -45,7 +44,6 @@ export async function POST(
   // que esta rota substitui quando a retomada é a saída.
   const authz = await requireRole("agent", { requestId, resource: "crm_leads" });
   if (!authz.ok) return authz.response;
-  const t = (texto: string) => traduzir(texto, authz.user.idioma);
 
   const handlerCtx: HandlerCtx = {
     organization_id: authz.org.orgId,

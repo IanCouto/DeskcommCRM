@@ -18,6 +18,7 @@
  * `/retomar`).
  */
 import { traduzir } from "@/lib/i18n/dicionario";
+import { CAMPOS_COPIAVEIS_NA_RETOMADA, pipelineConfigPatchSchema } from "@/lib/schemas/settings";
 
 /** Os dois modos aceitos em `settings.reabertura`. */
 export type ModoReabertura = "mesmo_registro" | "novo_negocio";
@@ -71,26 +72,17 @@ export interface RecusaDeReabertura {
  */
 export function modoDeReabertura(settings: unknown): ModoReabertura {
   const bruto = (settings as { reabertura?: unknown } | null | undefined)?.reabertura;
-  return bruto === "novo_negocio" ? "novo_negocio" : MODO_REABERTURA_PADRAO;
+  const lido = pipelineConfigPatchSchema.shape.reabertura.safeParse(bruto);
+  return lido.success && lido.data ? lido.data : MODO_REABERTURA_PADRAO;
 }
 
 /**
  * Os campos que a retomada copia da origem — a parte configurável do pedido
- * ("quais campos copiar é configurável"). A lista é FECHADA: o que entra aqui
- * é o que a tela do funil consegue declarar em `settings.reabertura_campos`,
- * e um valor fora da lista é ignorado em vez de virar escrita surpresa no
- * lead novo.
+ * ("quais campos copiar é configurável"). A lista é FECHADA e mora no schema
+ * do funil (`pipelineConfigPatchSchema.reabertura_campos`): um valor fora dela
+ * é ignorado em vez de virar escrita surpresa no lead novo.
  */
-export const CAMPOS_COPIAVEIS = [
-  "custom_fields",
-  "tags",
-  "description",
-  "value_cents",
-  "currency",
-  "expected_close_date",
-  "owner_user_id",
-  "owner_agent_id",
-] as const;
+export const CAMPOS_COPIAVEIS = CAMPOS_COPIAVEIS_NA_RETOMADA;
 
 export type CampoCopiavel = (typeof CAMPOS_COPIAVEIS)[number];
 
