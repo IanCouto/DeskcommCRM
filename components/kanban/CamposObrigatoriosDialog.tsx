@@ -148,7 +148,8 @@ export function CamposObrigatoriosDialog({
 
         <div className="space-y-3">
           {campos.map((campo) => {
-            const rotuloCampo = `${campo.rotulo}${campo.tipo === "boolean" ? "" : " *"}`;
+            const nome = campo.chave === "won_reason" ? t("Motivo do ganho") : campo.rotulo;
+            const rotuloCampo = `${nome}${campo.tipo === "boolean" ? "" : " *"}`;
             if (campo.tipo === "boolean") {
               return (
                 <div key={campo.chave} className="flex items-center gap-2">
@@ -178,7 +179,7 @@ export function CamposObrigatoriosDialog({
                     value={valores[campo.chave] ?? ""}
                     onValueChange={(valor) => setValores((v) => ({ ...v, [campo.chave]: valor }))}
                   >
-                    <SelectTrigger aria-label={campo.rotulo}>
+                    <SelectTrigger aria-label={nome}>
                       <SelectValue placeholder={t("Selecione…")} />
                     </SelectTrigger>
                     <SelectContent>
@@ -197,7 +198,7 @@ export function CamposObrigatoriosDialog({
                 <div key={campo.chave} className="space-y-1">
                   <Label className="text-xs">{rotuloCampo}</Label>
                   <Textarea
-                    aria-label={campo.rotulo}
+                    aria-label={nome}
                     value={valores[campo.chave] ?? ""}
                     onChange={(e) => setValores((v) => ({ ...v, [campo.chave]: e.target.value }))}
                   />
@@ -208,7 +209,7 @@ export function CamposObrigatoriosDialog({
               <div key={campo.chave} className="space-y-1">
                 <Label className="text-xs">{rotuloCampo}</Label>
                 <Input
-                  aria-label={campo.rotulo}
+                  aria-label={nome}
                   type={inputHtmlParaTipo(campo.tipo)}
                   value={valores[campo.chave] ?? ""}
                   onChange={(e) => setValores((v) => ({ ...v, [campo.chave]: e.target.value }))}

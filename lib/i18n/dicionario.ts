@@ -55,19 +55,20 @@ export const DICIONARIO: Traducoes = {
   "Selecione…": { es: "Selecciona…" },
   "Mover agora": { es: "Mover ahora" },
   "Motivos de ganho (separados por vírgula)": {
-    es: "Motivos de ganho (separados por comas)",
+    es: "Motivos de negocio ganado (separados por comas)",
   },
   "Sem motivos cadastrados o motivo de ganho é texto livre. Com a lista, só o que está nela é aceito.": {
-    es: "Sin motivos registrados el motivo de ganho es texto libre. Con la lista, solo se acepta lo que está en ella.",
+    es: "Sin motivos registrados, el motivo de negocio ganado es texto libre. Con la lista, solo se acepta lo que está en ella.",
   },
   "Exigir motivo de ganho ao fechar como ganho": {
-    es: "Exigir motivo de ganho al cerrar como ganho",
+    es: "Exigir motivo al cerrar como ganado",
   },
+  "Motivo do ganho": { es: "Motivo del negocio ganado" },
   "Preencha os campos obrigatórios antes de continuar: {campos}.": {
     es: "Completa los campos obligatorios antes de continuar: {campos}.",
   },
   "Este motivo de ganho não está na lista do funil. Escolha um dos motivos cadastrados.": {
-    es: "Este motivo de ganho no está en la lista del embudo. Elige uno de los motivos registrados.",
+    es: "Este motivo de negocio ganado no está en la lista del embudo. Elige uno de los motivos registrados.",
   },
   "Script para instalar no site": { es: "Script para instalar en el sitio" },
   "Salve e ligue a captura do Google ou do site. Depois, copie este script uma única vez para todas as páginas do seu site, antes de fechar o head. Se trocar os números configurados, copie o script novamente.": { es: "Guarde y active la captura de Google o del sitio. Después, copie este script una sola vez en todas las páginas de su sitio, antes de cerrar el head. Si cambia los números configurados, vuelva a copiar el script." },

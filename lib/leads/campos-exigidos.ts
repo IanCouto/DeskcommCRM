@@ -215,7 +215,12 @@ export function recusaDeCamposObrigatorios(
   faltando: CampoFaltando[],
   idioma?: Idioma | null,
 ): { codigo: "required_fields_missing"; mensagem: string } {
-  const nomes = faltando.map((c) => c.rotulo).join(", ");
+  // Só o rótulo nativo tem tradução; o de campo personalizado é texto do funil.
+  const nomes = faltando
+    .map((c) =>
+      c.chave === "won_reason" ? traduzir("Motivo do ganho", idioma ?? IDIOMA_PADRAO) : c.rotulo,
+    )
+    .join(", ");
   return {
     codigo: "required_fields_missing",
     mensagem: traduzir(
