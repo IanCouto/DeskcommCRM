@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { liberarEcoLocal, marcarEcoLocal } from "@/lib/kanban/local-echo";
@@ -14,11 +15,25 @@ interface MoveArgs {
   expectedUpdatedAt: string;
 }
 
+/**
+ * O arrasto que o servidor RECUSOU por `reabertura_cria_novo` (issue #1538) e
+ * que tem porta: o funil é `novo_negocio`, o card encerrado continua encerrado,
+ * e a saída é criar a nova tentativa. Guardada AQUI, no próprio hook do arrasto,
+ * porque este é o único lugar que conhece os dois lados ao mesmo tempo — o card
+ * que foi arrastado e a etapa que ele tentou alcançar (a retomada nasce justamente
+ * na etapa em que o operador soltou o card).
+ */
+export interface RetomadaPendente {
+  leadId: string;
+  stageId: string;
+}
+
 export function useMoveCard(pipelineId: string) {
   const qc = useQueryClient();
   const queryKey = ["board", pipelineId] as const;
+  const [retomada, setRetomada] = useState<RetomadaPendente | null>(null);
 
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: async (args: MoveArgs) => {
       // Minha própria ação não pulsa: o card já se moveu sob o cursor.
       marcarEcoLocal(args.leadId);
@@ -57,11 +72,18 @@ export function useMoveCard(pipelineId: string) {
           : atual,
       );
     },
-    onError: (err, _args, ctx) => {
+    onError: (err, args, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(queryKey, ctx.snapshot);
       if (err instanceof ApiError && err.status === 409) {
         // Reconcile authoritative state — server already gave new updated_at.
         qc.invalidateQueries({ queryKey });
+      }
+      if (err instanceof ApiError && err.code === "reabertura_cria_novo") {
+        // NÃO toast: um "erro" genérico mentiria sobre uma recusa que tem
+        // porta. O diálogo abaixo É a resposta — e ele leva a etapa que o
+        // operador alvo, para a retomada nascer no lugar certo.
+        setRetomada({ leadId: args.leadId, stageId: args.stageId });
+        return;
       }
       showApiError(err);
     },
@@ -72,4 +94,10 @@ export function useMoveCard(pipelineId: string) {
       qc.invalidateQueries({ queryKey });
     },
   });
+
+  return {
+    ...mutation,
+    retomada,
+    limparRetomada: () => setRetomada(null),
+  };
 }

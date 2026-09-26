@@ -24,6 +24,7 @@ import {
   recusaDeMotivoDaPerdaPeloBanco,
 } from "@/lib/leads/motivo-da-perda";
 import { RECUSA_DE_TROCA_DE_FUNIL } from "@/lib/leads/clonar-para-funil";
+import { modoDeReabertura, recusaReabertura } from "@/lib/leads/reabertura";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -72,11 +73,12 @@ export async function POST(
     return fail("not_found", t("Lead não encontrado."), 404, { requestId });
   }
 
-  // Fetch target stage to validate same pipeline (P-01) — e `is_lost`, que é o
-  // que decide se esta escrita precisa do motivo da perda (issue #917).
+  // Fetch target stage to validate same pipeline (P-01) — e `is_lost`/`is_won`,
+  // que decidem respectivamente o motivo da perda (#917) e se a escrita
+  // REABRIRIA um negócio encerrado (issue #1538).
   const { data: stage, error: stageErr } = await supabase
     .from("crm_stages")
-    .select("id, pipeline_id, name, is_lost")
+    .select("id, pipeline_id, name, is_lost, is_won")
     .eq("id", input.stage_id)
     .maybeSingle();
 
@@ -93,6 +95,37 @@ export async function POST(
       422,
       { requestId, details: { use: "/api/v1/leads/{id}/clone" } },
     );
+  }
+
+  // ── O FUNIL DECIDE SE ESTA ESCRITA REABRIRIA O NEGÓCIO (issue #1538) ───────
+  //
+  // O arrasto é UM dos quatro caminhos; os outros três (lote, IA, automação e
+  // MCP) passam pelo `moveLeadHandler`, que faz a MESMA pergunta com a mesma
+  // função. Em `mesmo_registro` — o padrão, e o de todo funil que não declarou
+  // nada — `recusaReabertura` devolve null e nada aqui muda.
+  const { data: funil, error: funilErr } = await supabase
+    .from("crm_pipelines")
+    .select("settings")
+    .eq("id", lead.pipeline_id)
+    .maybeSingle();
+  if (funilErr) {
+    return fail("internal_error", funilErr.message, 500, { requestId });
+  }
+  const recusa = recusaReabertura({
+    modo: modoDeReabertura((funil as { settings?: unknown } | null)?.settings),
+    statusAtual: (lead as { status?: string }).status,
+    etapaDestino: stage,
+    idioma: user.idioma,
+  });
+  if (recusa) {
+    // 409 e não 422: o board já trata 409 como "o servidor tem outro estado e
+    // a tela precisa se reconciliar com ele" — e aqui é exatamente isso, o
+    // negócio encerrado que continua encerrado. O `details.use` é o ponteiro
+    // para a porta que resolve, o mesmo formato do 422 do clone.
+    return fail(recusa.codigo, recusa.mensagem, 409, {
+      requestId,
+      details: { use: "/api/v1/leads/{id}/retomar", lead_id: leadId },
+    });
   }
 
   // ── O MOTIVO DA PERDA (issue #917) ──────────────────────────────────────────

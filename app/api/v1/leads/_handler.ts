@@ -17,6 +17,14 @@ import { emitLeadActivity, stageChangeReason } from "@/lib/leads/activity-emitte
 import { listaLegivel } from "@/lib/leads/activity-vocabulary";
 import { camposAlterados } from "@/lib/leads/campos-alterados";
 import { RECUSA_DE_TROCA_DE_FUNIL } from "@/lib/leads/clonar-para-funil";
+import {
+  RECUSA_RETOMADA_ETAPA_INDISPONIVEL,
+  RECUSA_RETOMADA_LEAD_ABERTO,
+  RECUSA_RETOMADA_SEM_ETAPA,
+  camposCopiadosNaRetomada,
+  modoDeReabertura,
+  recusaReabertura,
+} from "@/lib/leads/reabertura";
 import { ORIGEM_DA_PLANILHA } from "@/lib/leads/planilha";
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
 import { moedaDaOrganizacao } from "@/lib/catalogo/moeda-da-org";
@@ -378,6 +386,14 @@ export async function createLeadHandler(
      * porque alguém saiu da empresa. Não vem do corpo da requisição.
      */
     dono_herdado?: boolean;
+    /**
+     * Interno (retomada de negócio perdido, issue #1538). O NOVO negócio aponta
+     * para o encerrado que ele tenta de novo: é a coluna `retomado_de_lead_id`
+     * (migration 0425) por onde "tentativas até ganhar" é derivado. Não vem do
+     * corpo da requisição — quem cria a retomada é a rota `/retomar` (ou a tool
+     * MCP `crm_retomar_lead`), nunca o POST genérico.
+     */
+    retomado_de_lead_id?: string | null;
   },
 ): Promise<Record<string, unknown>> {
   // Validate stage belongs to pipeline within active org.
@@ -474,6 +490,7 @@ export async function createLeadHandler(
       source_metadata: input.source_metadata ?? {},
       external_id: input.external_id ?? null,
       custom_fields: input.custom_fields ?? {},
+      retomado_de_lead_id: input.retomado_de_lead_id ?? null,
       status: "open",
       position_in_stage: nextPos,
       created_by_user_id: ctx.actor.type === "user" ? ctx.actor.id : null,
@@ -831,7 +848,7 @@ export async function moveLeadHandler(
 
   const { data: stage, error: stageErr } = await supabase
     .from("crm_stages")
-    .select("id, pipeline_id, organization_id, name, is_lost")
+    .select("id, pipeline_id, organization_id, name, is_lost, is_won")
     .eq("id", input.to_stage_id)
     .maybeSingle();
   if (stageErr) {
@@ -854,6 +871,39 @@ export async function moveLeadHandler(
       ctx.requestId,
       traduzir(RECUSA_DE_TROCA_DE_FUNIL, ctx.idioma ?? "pt-BR"),
     );
+  }
+
+  // ── RETOMAR COMO NOVO NEGÓCIO (issue #1538) ────────────────────────────────
+  //
+  // Este handler é o escritor de etapa de TODO cliente que não é o board: IA,
+  // lote (`create_or_move_lead`), automações e a tool MCP
+  // `crm_move_lead_stage`. Nenhum deles pode reabrir um negócio encerrado num
+  // funil `novo_negocio` — a mesma pergunta e a MESMA função da rota de arrasto,
+  // porque duas réguas para a mesma regra é como o defeito nasce.
+  {
+    const { data: funil, error: funilErr } = await supabase
+      .from("crm_pipelines")
+      .select("settings")
+      .eq("id", lead.pipeline_id)
+      .maybeSingle();
+    if (funilErr) {
+      throw new ApiError(500, "internal_error", undefined, ctx.requestId, funilErr.message);
+    }
+    const recusa = recusaReabertura({
+      modo: modoDeReabertura((funil as { settings?: unknown } | null)?.settings),
+      statusAtual: (lead as { status?: string }).status,
+      etapaDestino: stage,
+      idioma: ctx.idioma,
+    });
+    if (recusa) {
+      throw new ApiError(
+        409,
+        recusa.codigo,
+        { use: "/api/v1/leads/{id}/retomar", lead_id: leadId },
+        ctx.requestId,
+        recusa.mensagem,
+      );
+    }
   }
 
   let position = input.position_in_stage;
@@ -1093,4 +1143,189 @@ export async function moveLeadHandler(
   });
 
   return finalLead;
+}
+
+
+export interface RetomarLeadInput {
+  /**
+   * A etapa da NOVA tentativa — a que quem arrastou tentou usar. Sem ela, a
+   * primeira etapa aberta do funil (mesma escolha do clone sem `stage_id`).
+   */
+  stage_id?: string;
+}
+
+/**
+ * RETOMAR UM NEGÓCIO PERDIDO COMO NEGÓCIO NOVO (issue #1538).
+ *
+ * É a porta que o 409 `reabertura_cria_novo` aponta: o negócio encerrado NÃO é
+ * tocado (continua com o status e o motivo dele), e nasce outro lead no MESMO
+ * funil, com o mesmo contato, `source = "retomada"` e
+ * `retomado_de_lead_id` apontando para a origem — a coluna (migration 0425) por
+ * onde "quantas tentativas até fechar" é derivado. A criação passa pelo
+ * `createLeadHandler`, então o `lead.created`, a auditoria e a linha do tempo
+ * são os MESMOS de um lead novo: uma retomada não é um lead de segunda classe.
+ *
+ * Serve a rota `POST /api/v1/leads/{id}/retomar` e a tool MCP
+ * `crm_retomar_lead` — dois call sites, um só caminho, como `/move` ×
+ * `moveLeadHandler`.
+ *
+ * Exige origem ENCRERRADA (`reabertura_lead_aberto`): retomar um negócio que
+ * já está aberto duplicaria o card que já está no quadro. O modo do funil NÃO
+ * entra aqui — em `mesmo_registro` quem decide se um encerrado reabre é o
+ * arrasto; esta porta existe para quem quer a nova tentativa de propósito.
+ */
+export async function retomarLeadHandler(
+  supabase: SB,
+  ctx: HandlerCtx,
+  leadId: string,
+  input: RetomarLeadInput = {},
+): Promise<Record<string, unknown>> {
+  const idioma = ctx.idioma ?? "pt-BR";
+
+  const { data: origem, error: selErr } = await supabase
+    .from("crm_leads")
+    .select("*")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (selErr) {
+    throw new ApiError(500, "internal_error", undefined, ctx.requestId, selErr.message);
+  }
+  if (!origem || origem.organization_id !== ctx.organization_id) {
+    throw new ApiError(404, "not_found", undefined, ctx.requestId, traduzir("Lead não encontrado.", idioma));
+  }
+  const origemTipada = origem as {
+    id: string;
+    pipeline_id: string;
+    status: string;
+    title: string;
+    description?: string | null;
+    contact_id?: string | null;
+    value_cents?: number | null;
+    currency?: string | null;
+    owner_user_id?: string | null;
+    owner_agent_id?: string | null;
+    expected_close_date?: string | null;
+    tags?: string[] | null;
+    custom_fields?: Record<string, unknown> | null;
+    lost_reason?: string | null;
+  };
+  if (origemTipada.status === "open") {
+    throw new ApiError(
+      422,
+      "reabertura_lead_aberto",
+      { use: "/api/v1/leads/{id}/move" },
+      ctx.requestId,
+      traduzir(RECUSA_RETOMADA_LEAD_ABERTO, idioma),
+    );
+  }
+
+  const { data: funil, error: funilErr } = await supabase
+    .from("crm_pipelines")
+    .select("settings")
+    .eq("id", origemTipada.pipeline_id)
+    .maybeSingle();
+  if (funilErr) {
+    throw new ApiError(500, "internal_error", undefined, ctx.requestId, funilErr.message);
+  }
+  const settings = (funil as { settings?: unknown } | null)?.settings;
+
+  // A etapa da nova tentativa: a que o chamador pediu (se veio) ou a primeira
+  // aberta do funil. Recusa junta para os dois casos em que ela não serve —
+  // etapa de OUTRO funil, de fechamento ou arquivada — porque a ação é a mesma
+  // (escolher outra), e `stage_pipeline_mismatch` é o código que o clone já
+  // devolve para o mesmo "não está disponível".
+  let etapa: { id: string; is_won: boolean; is_lost: boolean; is_archived: boolean };
+  if (input.stage_id) {
+    const { data, error } = await supabase
+      .from("crm_stages")
+      .select("id, pipeline_id, is_won, is_lost, is_archived")
+      .eq("organization_id", ctx.organization_id)
+      .eq("id", input.stage_id)
+      .maybeSingle();
+    if (error) {
+      throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
+    }
+    if (
+      !data ||
+      data.pipeline_id !== origemTipada.pipeline_id ||
+      data.is_archived ||
+      data.is_won ||
+      data.is_lost
+    ) {
+      throw new ApiError(
+        422,
+        "stage_pipeline_mismatch",
+        undefined,
+        ctx.requestId,
+        traduzir(RECUSA_RETOMADA_ETAPA_INDISPONIVEL, idioma),
+      );
+    }
+    etapa = data;
+  } else {
+    const { data, error } = await supabase
+      .from("crm_stages")
+      .select("id, pipeline_id, is_won, is_lost, is_archived")
+      .eq("organization_id", ctx.organization_id)
+      .eq("pipeline_id", origemTipada.pipeline_id)
+      .eq("is_archived", false)
+      .order("position", { ascending: true });
+    if (error) {
+      throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
+    }
+    const aberta = (data ?? []).find((e) => !e.is_won && !e.is_lost);
+    if (!aberta) {
+      throw new ApiError(
+        422,
+        "pipeline_without_initial_stage",
+        undefined,
+        ctx.requestId,
+        traduzir(RECUSA_RETOMADA_SEM_ETAPA, idioma),
+      );
+    }
+    etapa = aberta;
+  }
+
+  const campos = camposCopiadosNaRetomada(settings);
+  const copia = (campo: string): boolean => (campos as readonly string[]).includes(campo);
+
+  const payload: CreateLeadInput & {
+    custom_fields?: Record<string, unknown>;
+    source_metadata?: Record<string, unknown>;
+    retomado_de_lead_id?: string;
+  } = {
+    pipeline_id: origemTipada.pipeline_id,
+    stage_id: etapa.id,
+    // O título é o da origem: ele nasce do resolvedor das telas e é o que o
+    // operador reconhece no quadro — "Lead da automação" aqui seria um card
+    // novo sem nome.
+    title: origemTipada.title,
+    contact_id: origemTipada.contact_id ?? null,
+    source: "retomada",
+    tags: copia("tags") ? origemTipada.tags ?? [] : [],
+    custom_fields: copia("custom_fields") ? origemTipada.custom_fields ?? {} : {},
+    retomado_de_lead_id: origemTipada.id,
+    // O ponteiro da coluna é a cadeia; este registro guarda TAMBÉM o desfecho
+    // de origem para a tela, porque a coluna guarda só o id.
+    source_metadata: {
+      retomada_de: {
+        lead_id: origemTipada.id,
+        status: origemTipada.status,
+        lost_reason: origemTipada.lost_reason ?? null,
+      },
+    },
+    ...(copia("description") ? { description: origemTipada.description ?? null } : {}),
+    ...(copia("value_cents") ? { value_cents: origemTipada.value_cents ?? null } : {}),
+    ...(copia("currency") && origemTipada.currency ? { currency: origemTipada.currency } : {}),
+    ...(copia("expected_close_date")
+      ? { expected_close_date: origemTipada.expected_close_date ?? null }
+      : {}),
+    ...(copia("owner_user_id") && origemTipada.owner_user_id
+      ? { owner_user_id: origemTipada.owner_user_id }
+      : {}),
+    ...(copia("owner_agent_id") && origemTipada.owner_agent_id
+      ? { owner_agent_id: origemTipada.owner_agent_id }
+      : {}),
+  };
+
+  return createLeadHandler(supabase, ctx, payload);
 }

@@ -14,6 +14,7 @@ import type { Lead } from "@/lib/types/leads";
 import type { Pipeline, Stage } from "@/lib/kanban/types";
 import { StageColumn } from "./StageColumn";
 import { LeadDossier } from "./LeadDossier";
+import { RetomarComoNovoNegocioDialog } from "./RetomarComoNovoNegocioDialog";
 import { camposDoFunil } from "@/lib/leads/campos-do-funil";
 
 interface KanbanBoardProps {
@@ -274,6 +275,15 @@ export function KanbanBoard({
             data.stages.find((s) => s.id === leadDoDossie.stage_id)?.name ?? "—"
           }
           ownerNames={ownerNames}
+        />
+      )}
+      {moveCard.retomada && (
+        <RetomarComoNovoNegocioDialog
+          open
+          onOpenChange={(v: boolean) => !v && moveCard.limparRetomada()}
+          leadId={moveCard.retomada.leadId}
+          stageId={moveCard.retomada.stageId}
+          pipelineId={pipelineId}
         />
       )}
     </DragDropContext>

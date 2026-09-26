@@ -4674,6 +4674,7 @@ export type Database = {
           owner_user_id: string | null
           pipeline_id: string
           position_in_stage: number
+          retomado_de_lead_id: string | null
           source: string
           source_metadata: Json
           stage_changed_at: string | null
@@ -4704,6 +4705,7 @@ export type Database = {
           owner_user_id?: string | null
           pipeline_id: string
           position_in_stage?: number
+          retomado_de_lead_id?: string | null
           source?: string
           source_metadata?: Json
           stage_changed_at?: string | null
@@ -4734,6 +4736,7 @@ export type Database = {
           owner_user_id?: string | null
           pipeline_id?: string
           position_in_stage?: number
+          retomado_de_lead_id?: string | null
           source?: string
           source_metadata?: Json
           stage_changed_at?: string | null

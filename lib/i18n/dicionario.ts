@@ -9884,6 +9884,29 @@ export const DICIONARIO: Traducoes = {
   "Levado para outro funil": { es: "Movido a otro embudo" },
   // A TELA que faltava para a troca de funil — menu do card e o diálogo.
   "Levar para outro funil": { es: "Llevar a otro embudo" },
+  // ── Retomada como novo negócio (issue #1538) ──
+  "Retomar como novo negócio": { es: "Retomar como negocio nuevo" },
+  "Retomando…": { es: "Retomando…" },
+  "Este funil não reabre negócios encerrados. Retomar cria um negócio novo com o mesmo contato, copiando campos e tags, e guarda a ligação com este — o negócio original fica intacto, com o motivo dele.":
+    {
+      es: "Este embudo no reabre negocios cerrados. Retomar crea un negocio nuevo con el mismo contacto, copiando campos y etiquetas, y guarda el vínculo con este — el negocio original queda intacto, con su motivo.",
+    },
+  "Este funil retoma como novo negócio: mover um negócio encerrado para uma etapa aberta não o reabre. Use POST /api/v1/leads/{id}/retomar para criar a nova tentativa.":
+    {
+      es: "Este embudo retoma como negocio nuevo: mover un negocio cerrado a una etapa abierta no lo reabre. Usa POST /api/v1/leads/{id}/retomar para crear el nuevo intento.",
+    },
+  "Este negócio já está aberto: a retomada cria um negócio NOVO a partir de um encerrado. Para mudar de etapa, mova o negócio que já existe.":
+    {
+      es: "Este negocio ya está abierto: la retoma crea un negocio NUEVO a partir de uno cerrado. Para cambiar de etapa, mueve el negocio que ya existe.",
+    },
+  "A etapa escolhida não está disponível para a retomada: escolha uma etapa aberta deste funil.":
+    {
+      es: "La etapa elegida no está disponible para la retoma: elige una etapa abierta de este embudo.",
+    },
+  "Este funil não tem etapa aberta para receber a nova tentativa.":
+    {
+      es: "Este embudo no tiene etapa abierta para recibir el nuevo intento.",
+    },
   "Escolha o funil de destino": { es: "Elige el embudo de destino" },
   "Este é o único funil. Crie outro funil para poder levar o negócio até ele.": {
     es: "Este es el único embudo. Crea otro embudo para poder llevar el negocio hasta él.",
