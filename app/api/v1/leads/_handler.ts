@@ -1265,6 +1265,26 @@ export async function retomarLeadHandler(
     );
   }
 
+  // IDEMPOTÊNCIA: a origem já tem uma retomada ABERTA? Então a resposta é ela —
+  // retomar duas vezes (clique repetido, tool MCP chamada de novo) não abre um
+  // segundo negócio para a mesma tentativa. Retomada já encerrada não conta: aí
+  // uma nova tentativa é legítima.
+  // ponytail: não é atômico sob concorrência (duas chamadas simultâneas ainda
+  // criam duas); o upgrade é um índice único parcial em
+  // (retomado_de_lead_id) where status = 'open'.
+  const { data: jaRetomado, error: jaErr } = await supabase
+    .from("crm_leads")
+    .select("*")
+    .eq("organization_id", ctx.organization_id)
+    .eq("retomado_de_lead_id", origemTipada.id)
+    .eq("status", "open")
+    .limit(1)
+    .maybeSingle();
+  if (jaErr) {
+    throw new ApiError(500, "internal_error", undefined, ctx.requestId, jaErr.message);
+  }
+  if (jaRetomado) return jaRetomado as Record<string, unknown>;
+
   const { data: funil, error: funilErr } = await supabase
     .from("crm_pipelines")
     .select("settings")
@@ -1338,6 +1358,7 @@ export async function retomarLeadHandler(
     custom_fields?: Record<string, unknown>;
     source_metadata?: Record<string, unknown>;
     retomado_de_lead_id?: string;
+    dono_herdado?: boolean;
   } = {
     pipeline_id: origemTipada.pipeline_id,
     stage_id: etapa.id,
@@ -1371,7 +1392,33 @@ export async function retomarLeadHandler(
     ...(copia("owner_agent_id") && origemTipada.owner_agent_id
       ? { owner_agent_id: origemTipada.owner_agent_id }
       : {}),
+    // Dono copiado é HERDADO, como no clone: se ele saiu da empresa, a retomada
+    // nasce sem dono em vez de virar 422.
+    ...((copia("owner_user_id") && origemTipada.owner_user_id) ||
+    (copia("owner_agent_id") && origemTipada.owner_agent_id)
+      ? { dono_herdado: true }
+      : {}),
   };
+
+  // A RÉGUA DE CAMPOS OBRIGATÓRIOS (issue #1536): a retomada ENTRA numa etapa,
+  // e a etapa exigente vale para ela como vale para o arrasto. Só conta o que o
+  // negócio novo vai ter — os campos copiados da origem.
+  const vereditoDeCampos = validaCamposExigidos({
+    lead: { custom_fields: payload.custom_fields ?? {} },
+    settingsDoFunil: settings,
+    destino: { stageId: etapa.id, desfecho: null },
+    motivoDeGanho: null,
+  });
+  if (vereditoDeCampos.faltando.length > 0) {
+    const recusa = recusaDeCamposObrigatorios(vereditoDeCampos.faltando, idioma);
+    throw new ApiError(
+      422,
+      recusa.codigo,
+      { faltando: vereditoDeCampos.faltando },
+      ctx.requestId,
+      recusa.mensagem,
+    );
+  }
 
   return createLeadHandler(supabase, ctx, payload);
 }
