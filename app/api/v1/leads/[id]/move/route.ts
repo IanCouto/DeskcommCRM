@@ -101,6 +101,23 @@ export async function POST(
     );
   }
 
+  // ── A MESMA ETAPA É REORDENAÇÃO, NÃO ENTRADA (CR do mantenedor, #1536) ──────
+  //
+  // O card que já está NA coluna de destino não está ENTRANDO nela: arrastar
+  // dentro da própria coluna só troca a posição. A régua abaixo pergunta "este
+  // destino exige campos que o lead não tem?" e, sem esta comparação, respondia
+  // 422 para um movimento que não muda de etapa — na coluna exigente o card
+  // ficava preso sem ninguém conseguir reordená-lo, e com `won_reason_required`
+  // valia para TODO card antigo da coluna Ganho (o `won_reason` nasce `null`,
+  // então reordenar a coluna virava 422).
+  //
+  // Comparado AQUI, antes da régua, e não dentro dela: `campos-exigidos.ts`
+  // continua não sabendo nada sobre "mesma etapa" — quem sabe é esta rota, que
+  // é quem lê `lead.stage_id` ao lado do destino. As regras de vocabulário do
+  // ganho e da perda (#917) SEGUEM valendo: elas decidem sobre VALORES que a
+  // escrita traz, não sobre a entrada em si.
+  const mesmaEtapa = input.stage_id === lead.stage_id;
+
   // ── OS CAMPOS OBRIGATÓRIOS (issue #1536) ────────────────────────────────────
   //
   // A mesma pergunta dos outros cinco caminhos, respondida pela MESMA função:
@@ -109,16 +126,18 @@ export async function POST(
   // `details.faltando` nomeia chave e rótulo de cada campo: é ele que a tela
   // vira em diálogo (o único caminho onde dá para PREENCHER e tentar de novo).
   const settings = await settingsDoFunil(supabase, lead.pipeline_id);
-  const vereditoDeCampos = validaCamposExigidos({
-    lead: lead as Record<string, unknown>,
-    settingsDoFunil: settings,
-    destino: {
-      stageId: stage.id,
-      desfecho: stage.is_won ? "won" : stage.is_lost ? "lost" : null,
-    },
-    motivoDeGanho: input.won_reason ?? null,
-    customFieldsPropostos: input.custom_fields ?? null,
-  });
+  const vereditoDeCampos = mesmaEtapa
+    ? { faltando: [] }
+    : validaCamposExigidos({
+        lead: lead as Record<string, unknown>,
+        settingsDoFunil: settings,
+        destino: {
+          stageId: stage.id,
+          desfecho: stage.is_won ? "won" : stage.is_lost ? "lost" : null,
+        },
+        motivoDeGanho: input.won_reason ?? null,
+        customFieldsPropostos: input.custom_fields ?? null,
+      });
   if (vereditoDeCampos.faltando.length > 0) {
     const recusa = recusaDeCamposObrigatorios(vereditoDeCampos.faltando, user.idioma);
     return fail(recusa.codigo, recusa.mensagem, 422, {
