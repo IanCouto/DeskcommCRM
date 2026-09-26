@@ -157,7 +157,8 @@ export async function moverLeadParaEtapaDeHandoff(
   // este seria um dos caminhos que movem sem exigir nada e "uma rota exige,
   // outra não" voltaria a ser o defeito da #917. A recusa segue o desenho do
   // resto do arquivo: o card não anda, `motivo` diz a verdade e `detalhe` leva
-  // a frase com o que falta, que é o que o orquestrador registra no warn.
+  // a frase com o que falta. O rastro é o warn DESTE módulo: o orquestrador
+  // não lê o retorno.
   // Fail-open de `settingsDoFunil` vale aqui como em todos os caminhos.
   const settings = await settingsDoFunil(admin, leadRow.pipeline_id);
   const vereditoDeCampos = validaCamposExigidos({
@@ -169,11 +170,14 @@ export async function moverLeadParaEtapaDeHandoff(
     },
   });
   if (vereditoDeCampos.faltando.length > 0) {
-    return {
-      moveu: false,
-      motivo: "campos_obrigatorios",
-      detalhe: recusaDeCamposObrigatorios(vereditoDeCampos.faltando, null).mensagem,
-    };
+    const detalhe = recusaDeCamposObrigatorios(vereditoDeCampos.faltando, null).mensagem;
+    // Nenhum chamador lê o retorno (só tratam exceção): este warn é o único rastro.
+    logger.warn("[handoff-stage-move] etapa exige campos; card não movido", {
+      lead_id: leadRow.id,
+      organization_id: input.organizationId,
+      detalhe,
+    });
+    return { moveu: false, motivo: "campos_obrigatorios", detalhe };
   }
 
   // Nome da origem só enfeita o texto da timeline — erro descartado de

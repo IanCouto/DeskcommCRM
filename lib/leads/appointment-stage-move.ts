@@ -157,7 +157,8 @@ export async function moverLeadParaEtapaDeAgendamento(
   // que o negócio não tem? Sem esta linha, marcar um horário seria a porta de
   // trás da régua — duas respostas para a mesma pergunta, o defeito da #917 com
   // outro nome. A recusa não move, devolve o motivo e deixa `detalhe` com a
-  // frase do que falta, que é o que o chamador registra.
+  // frase do que falta. O rastro é o warn DESTE módulo: o chamador não lê o
+  // retorno.
   const settings = await settingsDoFunil(admin, leadRow.pipeline_id);
   const vereditoDeCampos = validaCamposExigidos({
     lead: leadRow as unknown as Record<string, unknown>,
@@ -168,11 +169,14 @@ export async function moverLeadParaEtapaDeAgendamento(
     },
   });
   if (vereditoDeCampos.faltando.length > 0) {
-    return {
-      moveu: false,
-      motivo: "campos_obrigatorios",
-      detalhe: recusaDeCamposObrigatorios(vereditoDeCampos.faltando, null).mensagem,
-    };
+    const detalhe = recusaDeCamposObrigatorios(vereditoDeCampos.faltando, null).mensagem;
+    // Nenhum chamador lê o retorno (só tratam exceção): este warn é o único rastro.
+    logger.warn("[appointment-stage-move] etapa exige campos; card não movido", {
+      lead_id: leadRow.id,
+      organization_id: input.organizationId,
+      detalhe,
+    });
+    return { moveu: false, motivo: "campos_obrigatorios", detalhe };
   }
 
   // Nome da origem só enfeita o texto da timeline — erro descartado de
