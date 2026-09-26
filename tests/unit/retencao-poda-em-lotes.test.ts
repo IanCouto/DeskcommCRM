@@ -69,12 +69,21 @@ vi.mock("@/lib/supabase/admin", () => ({
         then: (r: (v: unknown) => unknown) =>
           Promise.resolve({ data: contatosAnonimizados, error: null }).then(r),
       };
-      // A superfície do DELETE da décima poda: `.delete().lt().select().limit()`,
-      // o mesmo desenho de `lib/webhooks/retencao-da-captacao.ts`.
+      // A superfície do DELETE da décima poda: `.delete().lt().select().order().limit()`.
+      // O dublê recusa `limit` sem `order` antes, como o PostgREST 12.2 recusa
+      // (400 PGRST109): tirar o `.order()` do handler reprova este arquivo.
+      let ordenado = false;
       const apagando: Record<string, unknown> = {
         lt: () => apagando,
         select: () => apagando,
-        limit: () => apagando,
+        order: () => {
+          ordenado = true;
+          return apagando;
+        },
+        limit: () => {
+          if (!ordenado) throw new Error("PGRST109: A 'limit' was applied without an explicit 'order'");
+          return apagando;
+        },
         then: (r: (v: unknown) => unknown) =>
           Promise.resolve({ data: rascunhosApagados, error: null }).then(r),
       };

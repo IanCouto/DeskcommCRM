@@ -65,6 +65,7 @@ vi.mock("@/lib/supabase/admin", () => ({
       const q: Record<string, unknown> = {
         lt: () => q,
         select: () => q,
+        order: () => q,
         limit: () => q,
         then: (r: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(r),
       };
@@ -164,6 +165,7 @@ function banco(linhas: Linha[]) {
             return q;
           },
           select: () => q,
+          order: () => q,
           limit: (n: number) => {
             teto = n;
             return q;

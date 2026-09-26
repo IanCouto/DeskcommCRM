@@ -479,16 +479,18 @@ async function handle(req: NextRequest): Promise<Response> {
         return { data: typeof data === "number" ? data : null, error };
       },
       // A décima poda: DELETE do admin client, sem função de expurgo no banco.
-      // `.limit()` no DELETE é o mesmo desenho da captação
-      // (`lib/webhooks/retencao-da-captacao.ts`) — lote curto, transação
-      // fechada a cada rodada, e o retorno `select("id")` é a CONTAGEM que o
-      // relatório e `houveEfeito` usam.
+      // Lote curto, transação fechada a cada rodada, e o retorno `select("id")`
+      // é a CONTAGEM que o relatório e `houveEfeito` usam. O `.order("id")` NÃO
+      // é enfeite: o PostgREST 12.2 recusa `limit` sem `order` num DELETE
+      // (400 PGRST109), e aqui o erro sobe e derruba a rodada inteira,
+      // inclusive a retomada da cascata de LGPD que vem depois.
       async apagarRascunhos(vencidosAntesDe, lote) {
         const { data, error } = await admin
           .from("conversation_drafts")
           .delete()
           .lt("expires_at", vencidosAntesDe)
           .select("id")
+          .order("id")
           .limit(lote);
         return { data: Array.isArray(data) ? data.length : null, error };
       },
