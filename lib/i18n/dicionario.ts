@@ -37,6 +37,28 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  // ─── CAMPOS OBRIGATÓRIOS (issue #1536) ───
+  "Campos obrigatórios": { es: "Campos obligatorios" },
+  "Este funil exige alguns dados antes de mover o negócio. Preencha o que falta para continuar.": {
+    es: "Este embudo exige algunos datos antes de mover el negocio. Completa lo que falta para continuar.",
+  },
+  "Selecione…": { es: "Selecciona…" },
+  "Mover agora": { es: "Mover ahora" },
+  "Motivos de ganho (separados por vírgula)": {
+    es: "Motivos de ganho (separados por comas)",
+  },
+  "Sem motivos cadastrados o motivo de ganho é texto livre. Com a lista, só o que está nela é aceito.": {
+    es: "Sin motivos registrados el motivo de ganho es texto libre. Con la lista, solo se acepta lo que está en ella.",
+  },
+  "Exigir motivo de ganho ao fechar como ganho": {
+    es: "Exigir motivo de ganho al cerrar como ganho",
+  },
+  "Preencha os campos obrigatórios antes de continuar: {campos}.": {
+    es: "Completa los campos obligatorios antes de continuar: {campos}.",
+  },
+  "Este motivo de ganho não está na lista do funil. Escolha um dos motivos cadastrados.": {
+    es: "Este motivo de ganho no está en la lista del embudo. Elige uno de los motivos registrados.",
+  },
   "Sobre a empresa": { es: "Sobre la empresa" },
   "Não foi possível carregar o enriquecimento.": { es: "No se pudo cargar el enriquecimiento." },
   "Sem dados de enriquecimento para este contato.": { es: "Sin datos de enriquecimiento para este contacto." },
@@ -6730,7 +6752,6 @@ export const DICIONARIO: Traducoes = {
   "Abrir conversa com": { es: "Abrir conversación con" },
   "no Inbox": { es: "en el Inbox" },
   "sem ler": { es: "sin leer" },
-  "Selecione…": { es: "Selecciona…" },
   "Formato E.164": { es: "Formato E.164" },
   "Dados inválidos": { es: "Datos inválidos" },
   "Contato atualizado": { es: "Contacto actualizado" },
