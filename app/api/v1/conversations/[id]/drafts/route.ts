@@ -99,19 +99,24 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     return fail("validation_error", "Idempotency-Key deve ser UUID", 400, { requestId });
   }
 
+  // Em constantes antes do fechamento: `criar()` é declaração (hoisted), e o TS
+  // não leva para dentro dela o estreitamento de `authz.ok` nem o tipo do `let`.
+  const { supabase, organizationId, actor, apiTokenId } = authz;
+  const dados = input;
+
   /**
    * O efeito. Lança em falha de propósito: recibo de operação que falhou seria
    * pior que não ter idempotência — o cliente retentaria e receberia o replay
    * de uma criação que nunca existiu.
    */
   async function criar(): Promise<Resposta> {
-    const resultado = await criarRascunho(authz.supabase, {
-      organizationId: authz.organizationId,
+    const resultado = await criarRascunho(supabase, {
+      organizationId,
       conversationId: id,
-      texto: input.texto,
-      origem: input.origem,
-      expiraEmHoras: input.expira_em_horas,
-      apiTokenId: authz.apiTokenId ?? null,
+      texto: dados.texto,
+      origem: dados.origem,
+      expiraEmHoras: dados.expira_em_horas,
+      apiTokenId: apiTokenId ?? null,
     });
 
     if (!resultado.ok) {
@@ -127,13 +132,13 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
 
     await audit({
       action: "conversation.draft_created",
-      actorUserId: authz.actor.type === "user" ? authz.actor.id : null,
-      actorApiTokenId: authz.apiTokenId ?? null,
-      organizationId: authz.organizationId,
+      actorUserId: actor.type === "user" ? actor.id : null,
+      actorApiTokenId: apiTokenId ?? null,
+      organizationId,
       resourceType: "conversation",
       resourceId: id,
       requestId,
-      metadata: { draft_id: resultado.draftId, origem: input.origem },
+      metadata: { draft_id: resultado.draftId, origem: dados.origem },
     });
 
     return { draft_id: resultado.draftId, url: resultado.url };
@@ -146,13 +151,13 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       chave === null
         ? ({ tipo: "executou", resposta: await criar(), status: 201 } as const)
         : await comIdempotencia({
-            db: authz.supabase,
-            organizationId: authz.organizationId,
+            db: supabase,
+            organizationId,
             endpoint: ENDPOINT,
             chave,
             // O caminho entra no corpo: a MESMA chave em OUTRA conversa é
             // conflito, e não replay do rascunho da primeira.
-            corpo: { conversation_id: id, ...input },
+            corpo: { conversation_id: id, ...dados },
             executar: async () => ({ resposta: await criar(), status: 201 }),
           });
 
