@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { atividadeDaTransicao, gatilhoDaTransicao, type SituacaoAnterior } from "./laco";
+import { atividadeDaTransicao, gatilhoDaTransicao } from "./laco";
 
 describe("gatilhoDaTransicao", () => {
   it("nascer pendente ou confirmado é o mesmo gatilho: foi marcado", () => {
@@ -48,18 +48,5 @@ describe("gatilhoDaTransicao", () => {
   it("nascer já cancelado ou concluído não é gatilho de nada", () => {
     expect(gatilhoDaTransicao(null, "cancelled")).toBeNull();
     expect(gatilhoDaTransicao(null, "completed")).toBeNull();
-  });
-
-  it("o 'mesmo desfecho' não cabe nem no tipo: SituacaoAnterior nunca é completed/no_show", () => {
-    // `SituacaoAnterior` é "pending" | "confirmed" | null — compromisso já
-    // concluído não é "de onde ele veio" de nada, então `completed → completed`
-    // nem se escreve (o compilador recusa). É a metade COMPILADORA do guard de
-    // "uma vez cada" (#1612); a outra é do handler, que só monta transição
-    // quando o status mudou de fato — provada em
-    // tests/unit/agenda-aviso-de-compromisso.test.ts.
-    const anteriores: SituacaoAnterior[] = [null, "pending", "confirmed"];
-    const nomes = anteriores.map(String);
-    expect(nomes).not.toContain("completed");
-    expect(nomes).not.toContain("no_show");
   });
 });

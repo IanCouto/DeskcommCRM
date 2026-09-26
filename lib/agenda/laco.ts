@@ -117,11 +117,11 @@ export function gatilhoDaTransicao(de: SituacaoAnterior, para: Transicao): strin
     case "cancelled":
       return "appointment.cancelled";
     // O desfecho nasce da TRANSIÇÃO, que só existe quando o status MUDOU de
-    // fato — `atualizarAgendamento` nem constrói transição para o mesmo status,
-    // e o tipo nem deixa representá-lo: `SituacaoAnterior` é
-    // "pending" | "confirmed" | null, porque compromisso concluído ou com falta
-    // não vira "de onde ele veio" de nada. É o guard de "uma vez cada" (#1612)
-    // escrito no compilador.
+    // fato. O guard de "uma vez cada" (#1612) é do handler
+    // (`input.status !== atual.status` em `atualizarAgendamento`), NÃO do tipo:
+    // lá `atual.status` entra por cast em `SituacaoAnterior`, então uma
+    // correção `completed → no_show` chega aqui e emite `appointment.no_show`
+    // — uma vez por transição real, que é o comportamento certo.
     case "completed":
       return "appointment.completed";
     case "no_show":
