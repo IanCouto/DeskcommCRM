@@ -1,4 +1,4 @@
--- 0419 · MOTIVO DE GANHO NATIVO (issue #1536)
+-- 0420 · MOTIVO DE GANHO NATIVO (issue #1536)
 --
 -- O produto pedia "por que ganhamos" e não tinha onde guardar: `lost_reason`
 -- existe desde sempre (CHECK `crm_leads_lost_reason_required` + trigger
@@ -25,4 +25,4 @@ alter table public.crm_leads
   add column if not exists won_reason text;
 
 comment on column public.crm_leads.won_reason is
-  'Motivo do ganho (issue #1536, migration 0419): por que este negócio foi fechado como ganho. null quando ninguém informou. Texto livre por padrão; settings.won_reasons do funil transforma em lista e settings.won_reason_required liga a obrigatoriedade — as duas decididas no servidor (lib/leads/campos-exigidos.ts), nunca por CHECK: o ganho não tinha exigência nenhuma antes e não pode ganhar uma para o install inteiro.';
+  'Motivo do ganho (issue #1536, migration 0420): por que este negócio foi fechado como ganho. null quando ninguém informou. Texto livre por padrão; settings.won_reasons do funil transforma em lista e settings.won_reason_required liga a obrigatoriedade — as duas decididas no servidor (lib/leads/campos-exigidos.ts), nunca por CHECK: o ganho não tinha exigência nenhuma antes e não pode ganhar uma para o install inteiro.';

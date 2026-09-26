@@ -38199,7 +38199,7 @@ alter table public.messages
 comment on column public.messages.sent_on_behalf_of_user_id is
   'Autoria "em nome de" (#1613, migration 0416): a PESSOA — membro ativo agent+ da organização — em nome de quem um token enviou esta mensagem. null em todo envio direto. Só a rota POST /api/v1/messages grava, e só com o escopo messages:on_behalf; o balão mostra "Fulano · via {token}" a partir de metadata.sent_on_behalf.';
 
--- ---- motivo de ganho nativo (migration 0419, issue #1536) ----
+-- ---- motivo de ganho nativo (migration 0420, issue #1536) ----
 --
 -- Coluna nova, nullable, sem backfill e sem policy nova — a RLS por organização
 -- já cobre a linha de `crm_leads`. SEM CHECK e SEM trigger de propósito: a
@@ -38214,7 +38214,7 @@ alter table public.crm_leads
   add column if not exists won_reason text;
 
 comment on column public.crm_leads.won_reason is
-  'Motivo do ganho (issue #1536, migration 0419): por que este negócio foi fechado como ganho. null quando ninguém informou. Texto livre por padrão; settings.won_reasons do funil transforma em lista e settings.won_reason_required liga a obrigatoriedade — as duas decididas no servidor (lib/leads/campos-exigidos.ts), nunca por CHECK: o ganho não tinha exigência nenhuma antes e não pode ganhar uma para o install inteiro.';
+  'Motivo do ganho (issue #1536, migration 0420): por que este negócio foi fechado como ganho. null quando ninguém informou. Texto livre por padrão; settings.won_reasons do funil transforma em lista e settings.won_reason_required liga a obrigatoriedade — as duas decididas no servidor (lib/leads/campos-exigidos.ts), nunca por CHECK: o ganho não tinha exigência nenhuma antes e não pode ganhar uma para o install inteiro.';
 
 -- ---- publicar agente com o provedor personalizado (migration 0418, #1642) ----
 -- Para `custom`, o modelo é conferido na lista que o PRÓPRIO endpoint devolveu
