@@ -1706,7 +1706,9 @@ export const DICIONARIO: Traducoes = {
   ") continua guardada no histórico, mas deixa de atender.": {
     es: ") sigue guardada en el historial, pero deja de atender.",
   },
-  nenhuma: { es: "ninguna" },
+  "Esta versão se tornará a ativa no atendimento. É a primeira publicação deste agente.": {
+    es: "Esta versión será la activa en la atención. Es la primera publicación de este agente.",
+  },
   "Empresa:": { es: "Empresa:" },
   "Modelo:": { es: "Modelo:" },
   "Tools adicionadas:": { es: "Herramientas agregadas:" },

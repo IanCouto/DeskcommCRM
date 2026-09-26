@@ -68,9 +68,15 @@ export function PublishConfirmDialog({
             {draft.version_number}?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {t("Esta versão se tornará a ativa no atendimento. A versão atual (")}
-            {published ? `v${published.version_number}` : t("nenhuma")}
-            {t(") continua guardada no histórico, mas deixa de atender.")}
+            {published ? (
+              <>
+                {t("Esta versão se tornará a ativa no atendimento. A versão atual (")}
+                {`v${published.version_number}`}
+                {t(") continua guardada no histórico, mas deixa de atender.")}
+              </>
+            ) : (
+              t("Esta versão se tornará a ativa no atendimento. É a primeira publicação deste agente.")
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
 

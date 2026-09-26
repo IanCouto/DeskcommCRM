@@ -52,11 +52,13 @@ describe("Publicar v? — o texto que o operador lê", () => {
     expect(texto).toContain("A versão atual (v7) continua guardada no histórico, mas deixa de atender.");
   });
 
-  it("sem versão publicada, diz 'nenhuma' e não promete desativar nada", () => {
+  it("sem versão publicada, diz que é a primeira e não fala de 'versão atual'", () => {
     const texto = abrir(versao({ version_number: 1 }), null);
 
     expect(texto).not.toMatch(/superseded/i);
-    expect(texto).toContain("A versão atual (nenhuma) continua guardada no histórico");
+    expect(texto, "a v1 não tem versão atual para 'deixar de atender'").not.toContain("(nenhuma)");
+    expect(texto).not.toContain("deixa de atender");
+    expect(texto).toContain("É a primeira publicação deste agente.");
   });
 
   it("mostra a EMPRESA pelo nome que o operador conhece, não o id cru", () => {
