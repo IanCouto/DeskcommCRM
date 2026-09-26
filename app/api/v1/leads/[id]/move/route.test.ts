@@ -279,17 +279,18 @@ describe("POST /api/v1/leads/[id]/move", () => {
   });
 
   it("mudança de etapa de verdade continua barrada pela régua (o atalho não vira buraco)", async () => {
-    const exigenteNaOrigem = {
+    // Aqui a exigência é na etapa de DESTINO — é ela que o card está entrando.
+    const exigenteNoDestino = {
       fields: [
         {
           key: "concorrente",
           label: "Concorrente",
           type: "text",
-          obrigatorio_em: { etapas: [STAGE_A] },
+          obrigatorio_em: { etapas: [STAGE_B] },
         },
       ],
     };
-    vi.mocked(createClient).mockResolvedValue(bancoFalso(exigenteNaOrigem) as never);
+    vi.mocked(createClient).mockResolvedValue(bancoFalso(exigenteNoDestino) as never);
     const { POST } = await import("./route");
 
     const response = await POST(
