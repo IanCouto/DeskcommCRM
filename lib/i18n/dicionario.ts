@@ -539,7 +539,7 @@ export const DICIONARIO: Traducoes = {
   "Remover logo escuro": { es: "Eliminar logo oscuro" },
   "Use uma versão legível sobre fundo escuro. Ela aparece sem moldura branca. Sem ela, o logo padrão mantém a proteção de contraste. PNG ou JPG, até 512 KB.": { es: "Usa una versión legible sobre fondo oscuro. Se muestra sin marco blanco. Sin ella, el logo predeterminado conserva la protección de contraste. PNG o JPG, hasta 512 KB." },
   // /admin/marca — ícone da aba (favicon), migration 0443.
-  "Ícone da aba (favicon)": { es: "Ícono de la pestaña (favicon)" },
+  "Ícone do aplicativo e do navegador": { es: "Ícono de la aplicación y del navegador" },
   "Ícone da aba": { es: "Ícono de la pestaña" },
   "Remover ícone": { es: "Eliminar ícono" },
   "Ícone da aba atualizado.": { es: "Ícono de la pestaña actualizado." },
@@ -551,11 +551,11 @@ export const DICIONARIO: Traducoes = {
   "Você não tem permissão para trocar o ícone da aba.": {
     es: "No tienes permiso para cambiar el ícono de la pestaña.",
   },
-  "Imagem quadrada, de preferência 64×64 ou maior. PNG ou JPG, até": {
-    es: "Imagen cuadrada, preferiblemente de 64×64 o mayor. PNG o JPG, hasta",
+  "Imagem quadrada, de preferência 512×512 ou maior. PNG ou JPG, até": {
+    es: "Imagen cuadrada, preferiblemente de 512×512 o mayor. PNG o JPG, hasta",
   },
-  "KB. Sem ícone próprio, a aba mostra a inicial do nome sobre a cor da marca.": {
-    es: "KB. Sin ícono propio, la pestaña muestra la inicial del nombre sobre el color de la marca.",
+  "KB. Usada no navegador e no aplicativo instalado. Sem arquivo, mantém o desenho da marca.": {
+    es: "KB. Se usa en el navegador y en la aplicación instalada. Sin archivo, conserva el dibujo de la marca.",
   },
   // /admin/email — o servidor SMTP da instalação (PR #714, @betoarts, recorte).
   "Servidor de e-mail conectado e autenticado.": { es: "Servidor de correo conectado y autenticado." },
@@ -12767,6 +12767,40 @@ export const DICIONARIO: Traducoes = {
   "Comandos pelo celular ligados — já valem no próximo atendimento.":
     { es: "Comandos desde el celular activados — ya valen en la próxima atención." },
   "Comandos pelo celular desligados.": { es: "Comandos desde el celular desactivados." },
+  // ─── #1540 — lembrete interno (cercas de espanhol) ───
+  "sem mensagem ao cliente": { es: "sin mensaje al cliente" },
+  "Título da tarefa": { es: "Título de la tarea" },
+  "Ligar para {{contact.name}} sobre {{lead.title}}": { es: "Llamar a {{contact.name}} sobre {{lead.title}}" },
+  "Vence em (dias)": { es: "Vence en (días)" },
+  "Atribuir a": { es: "Asignar a" },
+  "Dono do negócio": { es: "Dueño del negocio" },
+  "Este nó cria uma tarefa para a equipe — nenhuma mensagem sai para o cliente.":
+    { es: "Este nodo crea una tarea para el equipo — ningún mensaje sale al cliente." },
+  "Somente interno": { es: "Solo interno" },
+  "O fluxo inteiro não fala com o cliente: a publicação recusa qualquer nó que envie mensagem.":
+    { es: "El flujo entero no habla con el cliente: la publicación rechaza cualquier nodo que envíe un mensaje." },
+  "O lembrete sai quando se passarem N dias sem mensagem na direção escolhida. Chegando mensagem nova, o relógio zera — e um novo silêncio de N dias gera outro lembrete. Nada é enviado ao cliente.": { es: "El recordatorio sale cuando pasan N días sin mensaje en la dirección elegida. Llegando un mensaje nuevo, el reloj se reinicia — y un nuevo silencio de N días genera otro recordatorio. No se envía nada al cliente." },
+  "O lembrete sai quando se passarem N dias com o card na mesma etapa. Mudando a etapa, o relógio zera. Nada é enviado ao cliente.": { es: "El recordatorio sale cuando la tarjeta lleva N días en la misma etapa. Cambiando de etapa, el reloj se reinicia. No se envía nada al cliente." },
+  "Depois de N dias": { es: "Después de N días" },
+  "Silêncio de": { es: "Silencio de" },
+  "De quem é o silêncio": { es: "De quién es el silencio" },
+  "Não gerar lembrete quando o cliente tiver compromisso marcado": { es: "No generar recordatorio cuando el cliente tenga un compromiso marcado" },
+  "Quando ficar N dias sem mensagem": { es: "Cuando pasen N días sin mensaje" },
+  "Quando um lead ficar N dias na mesma etapa": { es: "Cuando un lead lleve N días en la misma etapa" },
+  "Criar tarefa interna (sem mensagem ao cliente)": { es: "Crear tarea interna (sin mensaje al cliente)" },
+  "A tarefa não foi criada: o evento que disparou a regra não trouxe um lead nem um contato para pendurar nela.": {
+    es: "La tarea no se creó: el evento que disparó la regla no trajo un lead ni un contacto donde colgarla.",
+  },
+  "A tarefa não foi criada: a pessoa escolhida como responsável não ficou resolvida para esta tarefa. Escolha outro responsável na automação.": {
+    es: "La tarea no se creó: la persona elegida como responsable no quedó resuelta para esta tarea. Elija otro responsable en la automatización.",
+  },
+  "A tarefa não foi criada: o título ficou vazio depois de preencher os campos do texto. Escreva um título que não dependa só de dado que faltou.": {
+    es: "La tarea no se creó: el título quedó vacío después de completar los campos del texto. Escriba un título que no dependa solo de un dato que faltó.",
+  },
+  "A tarefa não foi criada: o banco recusou a gravação. Tente de novo em alguns minutos; se persistir, abra a tarefa na agenda para ver o detalhe.": {
+    es: "La tarea no se creó: la base de datos rechazó el registro. Inténtelo de nuevo en unos minutos; si persiste, abra la tarea en la agenda para ver el detalle.",
+  },
+
   // ─── PREVISÃO PONDERADA DO FUNIL (issue #1535) ───
   "Previsão": { es: "Previsión" },
   "Ponderado": { es: "Ponderado" },

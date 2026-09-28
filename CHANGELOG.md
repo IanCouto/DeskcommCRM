@@ -8,6 +8,104 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.59.0] — 2026-09-28
+
+### Adicionado
+
+- **Automação e follow-up ganham o lembrete interno, que cria tarefa para a equipe sem mandar mensagem ao cliente, e os gatilhos por tempo** As regras de automação têm uma ação nova, Criar tarefa. Ela aceita título com
+  o nome do contato e do negócio, prazo em dias, responsável (o dono do negócio
+  ou uma pessoa escolhida) e prioridade. O responsável recebe o aviso no
+  navegador, e a tarefa aparece na linha do tempo do negócio. Os fluxos de
+  follow-up ganham o nó Lembrete interno, que faz o mesmo sem enviar nada ao
+  cliente. Também ganham a opção Somente interno, que impede a publicação de um
+  fluxo com qualquer nó que mande mensagem. Há dois gatilhos novos: N dias sem
+  mensagem (da equipe, do cliente ou de qualquer lado) e N dias na mesma etapa.
+  Os dois disparam uma vez por episódio, voltam a valer quando chega mensagem
+  nova ou o card muda de etapa, e podem ser configurados para respeitar um
+  compromisso marcado na agenda. O aviso de data do funil volta a disparar quando
+  a data do negócio muda e passa a olhar só negócios abertos. O que já foi
+  avisado antes da atualização não é avisado de novo. Não é preciso fazer nada
+  na instalação.
+
+  Contribuição de @webtecnica (#1683, fecha #1540).
+
+- **O servidor pode falar com o Supabase por um endereço só dele** Quem tem o Supabase na mesma rede da instalação — Kong, Supabase self-host —
+  passa a poder declarar `SUPABASE_SERVER_URL=http://kong:8000` no `.env`. Aí o
+  app, o middleware e o worker do agente falam com o banco pelo caminho curto, e o
+  navegador continua na URL pública: o endpoint interno deixa de precisar estar
+  publicado na internet só para o servidor chegar nele.
+
+  Vazio é o padrão, e vazio é o que toda instalação já faz — nada muda para quem
+  não preencher. O valor tem de ser um endereço http(s) absoluto; se não for, o
+  servidor avisa no log e volta a usar a URL pública, em vez de derrubar a
+  instalação. É runtime puro: trocar o valor não pede rebuild da imagem.
+
+  Contribuição de @webtecnica (#1786, fecha #1082).
+
+### Alterado
+
+- **README em inglês volta a acompanhar o português e o CONTRIBUTING ganha versão em inglês** A decisão do mantenedor de 16/09/2026 (#890) manda `README.md` e `CONTRIBUTING.md` serem
+  mantidos em inglês ao lado das versões em português, e ela fecha dois buracos medidos:
+  `README.en.md` estava atrás do `README.md` em dois lugares — o parágrafo dos guias do
+  assistente de instalação (`scripts/instalar-guias.sh`, `.agents/skills/`) e a seção
+  `📁 Estrutura` —, e `CONTRIBUTING.en.md` não existia. Os dois parágrafos foram
+  traduzidos para o inglês sem mudar o conteúdo: comandos, caminhos de arquivo e
+  identificadores ficaram iguais, e a árvore de diretórios da seção `📁 Structure`
+  mantém os mesmos comentários por diretório. `CONTRIBUTING.en.md` é a tradução integral
+  de `CONTRIBUTING.md` (234 linhas), e ambos ganharam o seletor de idioma no topo, no
+  mesmo formato do `README.md`; os dois links para o CONTRIBUTING dentro do
+  `README.en.md` passaram a apontar para a versão em inglês. Nenhum outro arquivo mudou:
+  a seção `🧹 Desinstalar` e o comentário das extensões do Postgres continuam fora do
+  inglês — drift pré-existente, fora dos dois itens que a decisão nomeou.
+
+  Contribuição de @webtecnica (#1841, issue #890).
+
+- **O lint da suíte passa a rodar o ESLint 10, e sai a versão que o registro do npm aposentou** O `pnpm lint`, executado pelo check obrigatório `verify`, rodava o ESLint 9.39.5, marcado como sem suporte pelo registro do npm. Agora roda o 10.11.0, que produz as mesmas mensagens, arquivo por arquivo, sem nenhuma regra mudada; o `AGENTS.md` declara a major nova e um teste passa a conferi-la. O ESLint não roda no produto: nada muda na imagem nem para quem opera a instalação.
+
+  Levantamento de @melgarafael (#297). Contribuição de @in100tiva (#1840).
+
+### Corrigido
+
+- **No faturamento, cada moeda tem o seu bloco em vez de uma soma entre moedas** Quando o período tinha comandas ou lançamentos em moedas diferentes, a tela de
+  Faturamento somava tudo e escrevia o resultado em real: R$ 150,00 e 200,00 €
+  apareciam como "R$ 350,00" nos cartões Entrou e Saldo, no faturado e nas listas
+  por forma de pagamento, serviço, cliente e comissão, e o ticket médio misturava
+  as duas moedas. Agora cada moeda tem o seu bloco, com os seus cartões, o seu
+  ticket médio e as suas listas, sem conversão, e a moeda da organização vem
+  primeiro. Os lançamentos do período e os lançamentos recorrentes
+  (Configurações › Financeiro) passam a mostrar cada valor na moeda da própria
+  linha, em vez de sempre em real. A separação é preventiva: as comandas, os
+  lançamentos e as recorrências criados pela tela ainda nascem em real, então no
+  uso normal os valores continuam saindo em real, como antes; a mistura só
+  aparece com dado gravado em outra moeda por fora das telas. Numa organização
+  configurada em outra moeda, o período sem movimento mostra o zero na moeda
+  dela. O relatório que a tela lê (/api/v1/reports/financeiro) ganha o campo
+  por_moeda, com os mesmos totais separados por moeda, e os campos que já
+  existiam não mudam. Não exige ação de quem opera a instalação.
+
+  Levantamento de @franceschini-lucas (#1531).
+
+  Contribuição de @in100tiva (#1839).
+
+- **"Sair da lista de espera" e "meu filho não me liga mais" deixam de virar bloqueio** Duas frases de rotina gravavam `is_blocked` sem que a pessoa tivesse pedido
+  descadastro. A primeira é o falso positivo que o freio do #1805 consertou em
+  "me tira/remove da lista" — só que o irmão dela, "sair da lista", ficou de fora:
+  "quero sair da lista de espera" é paciente querendo ser chamado, e "lista de
+  presentes" é compra. As duas regras leem hoje a mesma lista de listas de envio,
+  de modo que "sair da lista de transmissão" continua bloqueando.
+
+  A segunda é `liga`, que é imperativo informal ("não me liga mais" = ordem) e
+  também 3ª pessoa do indicativo ("meu filho não me liga mais" = relato). O que
+  separa as duas é o sujeito, e ele vem antes de "não me": havendo sujeito
+  explícito de 3ª pessoa — pronome (`ele`), ou nome com determinante (`meu filho`,
+  `a doutora`, `meu antigo chefe`) — a frase deixa de ser tratada como pedido.
+  Sem sujeito, a ordem continua bloqueando como antes, e "a partir de amanhã não
+  me mande mais" também, porque ali vem uma preposição, não um sujeito. O
+  sujeito precisa abrir a mensagem ou a frase: numa mensagem sem pontuação como
+  "vou bloquear o numero não me liga mais", o pedido continua bloqueando.
+
+  Contribuição de @webtecnica (#1825).
+
 ## [1.58.1] — 2026-09-28
 
 ### Corrigido
@@ -9002,7 +9100,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.58.1...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.59.0...HEAD
+[1.59.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.58.1...v1.59.0
 [1.58.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.58.0...v1.58.1
 [1.58.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.57.0...v1.58.0
 [1.57.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.56.1...v1.57.0
