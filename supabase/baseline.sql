@@ -164,10 +164,23 @@ begin
   elsif v_is_lost then
     new.status := 'lost';
     new.closed_at := coalesce(new.closed_at, now());
+    -- #1537: DE QUEM ERA a etapa que este negócio deixou — a perda sem a
+    -- etapa de origem não diz em que momento o funil vazou. Só na transição:
+    -- um card já perdido arrastado entre etapas de perda mantém a origem
+    -- verdadeira (a etapa ABERTA em que morreu), e reabrir não a herda.
+    -- Todo caminho de perda MOVE a etapa (quadro, 0209 em lote, 0263 em lote,
+    -- encerramento) e este gatilho é o único escritor de `status` (P-02), então
+    -- a transição de status SEM troca de etapa não existe para escrever aqui.
+    if tg_op = 'UPDATE' and old.status is distinct from 'lost' then
+      new.lost_from_stage_id := coalesce(new.lost_from_stage_id, old.stage_id);
+    end if;
   else
     if tg_op = 'UPDATE' and old.status in ('won','lost') then
       new.status := 'open';
       new.closed_at := null;
+      -- #1537: reabriu — a origem da perda passada não pertence a um negócio
+      -- que voltou a ser aberto. Se morrer de novo, nasce a nova origem.
+      new.lost_from_stage_id := null;
     end if;
   end if;
   return new;
@@ -27037,8 +27050,17 @@ begin
       raise exception 'lost_reason_required' using errcode = '22023';
     end if;
 
+    -- #1537: `settings.lost_reasons` aceita texto puro E `{ label, categoria }`.
+    -- O que o trigger compara é o RÓTULO nos dois formatos: `jsonb_array_elements_text`
+    -- de um objeto devolveria o JSON inteiro e recusaria com 22023 um motivo que
+    -- a própria tela acabou de oferecer. `#>> '{}'` desembrulha o string.
     select coalesce(
-      array(select jsonb_array_elements_text(settings->'lost_reasons')), '{}'::text[]
+      array(
+        select case when jsonb_typeof(e) = 'object'
+                    then nullif(e ->> 'label', '')
+                    else nullif(e #>> '{}', '') end
+          from jsonb_array_elements(settings->'lost_reasons') as t(e)
+      ), '{}'::text[]
     ) into v_pipeline_extra
     from public.crm_pipelines where id = new.pipeline_id;
 
@@ -30634,7 +30656,12 @@ alter table public.entregas_de_aviso_de_caso
     'titular_anonimizado',
     'expirou',
     'falha_no_envio',
-    'indeterminado'));
+    'indeterminado',
+    -- (migration 0439) O número de destino voltou a ser de uma conexão ATIVA
+    -- desta organização — o laço robô-com-robô que a 0292 recusa ao DEFINIR o
+    -- aviso. Este bloco é o único da constraint, e já carrega o vocabulário
+    -- vigente: quem amplia o conjunto edita AQUI.
+    'destino_da_propria_organizacao'));
 
 -- A CHAVE DA IDEMPOTÊNCIA. O dreno do `event_log` reentrega o mesmo evento em
 -- retry e três processos diferentes drenam a mesma fila: sem esta unique, a
@@ -30764,9 +30791,14 @@ begin
   -- O NÚMERO DE AVISO NÃO PODE SER UM NÚMERO DA PRÓPRIA ORGANIZAÇÃO. É o laço
   -- robô-com-robô: a conexão de avisos manda para o número oficial, o agente
   -- dele responde, e as duas pontas se alimentam sem fim.
+  -- A conexão ARQUIVADA fica FORA da conta. Ela não envia nem recebe, então o
+  -- laço não acontece por ela — e contá-la bloqueia o número PARA SEMPRE, porque
+  -- a conexão que já teve agente publicado não pode ser apagada (as versões a
+  -- seguram) e o número nunca mais poderia receber aviso.
   if exists (
        select 1 from public.channel_sessions s
         where s.organization_id = p_org
+          and s.archived_at is null
           and s.phone_number is not null
           and regexp_replace(s.phone_number, '\D', '', 'g') = any (v_variantes)) then
     raise exception 'aviso_de_caso_numero_da_propria_org' using errcode = '22023';
@@ -33978,16 +34010,18 @@ create unique index if not exists sales_agendamento_unico_idx
   on public.sales (organization_id, appointment_id)
   where appointment_id is not null and status <> 'cancelled';
 
--- ---- relatório financeiro (migrations 0353 + 0356) ----
+-- ---- relatório financeiro (migrations 0353 + 0356 + 0444) ----
 -- Agrega NO BANCO: o PostgREST corta em 1000 linhas sem avisar, e somar na
 -- aplicação devolve um número menor com cara de certo (medido nesta base:
 -- R$ 141.436,00 em vez de R$ 641.103,60). Invoker, para a RLS de cada tabela
 -- continuar valendo.
 --
--- O corpo abaixo é o da 0247, que ACRESCENTOU `por_servico` e `por_cliente`
--- sem mudar a assinatura. O apêndice guarda o estado final, nunca as duas
--- versões empilhadas — senão quem lê o baseline vê a definição antiga
--- primeiro e conclui que ela é a que vale.
+-- O corpo abaixo é o da 0444, que ACRESCENTOU `por_moeda` (os mesmos totais e
+-- listas, separados por moeda — #1531) sobre o da 0356, que ACRESCENTOU
+-- `por_servico` e `por_cliente`; nenhuma das duas mudou a assinatura nem os
+-- campos que já existiam. O apêndice guarda o estado final, nunca as versões
+-- empilhadas — senão quem lê o baseline vê a definição antiga primeiro e
+-- conclui que ela é a que vale.
 create or replace function public.fn_relatorio_financeiro(
   p_org uuid,
   p_de date,
@@ -33999,14 +34033,14 @@ stable
 set search_path = public
 as $$
   with lancamentos as (
-    select direction, amount_cents
+    select direction, amount_cents, currency
       from public.financial_entries
      where organization_id = p_org
        and status = 'paid'
        and entry_date between p_de and p_ate
   ),
   comandas as (
-    select id, status, total_cents, reversed_at, payment_method_id, contact_id
+    select id, status, total_cents, currency, reversed_at, payment_method_id, contact_id
       from public.sales
      where organization_id = p_org
        and finalized_at is not null
@@ -34054,6 +34088,56 @@ as $$
       from comandas c
      where c.contact_id is not null
      group by 1
+  ),
+  -- Daqui para baixo, os mesmos agrupamentos com a moeda na chave. Ficam
+  -- paralelos aos de cima, em vez de o topo passar a somar os blocos, para que
+  -- se prove por leitura que nenhum campo antigo mudou de conta.
+  moedas as (
+    select currency as moeda from lancamentos
+    union
+    select currency from comandas
+  ),
+  forma_por_moeda as (
+    select c.currency                     as moeda,
+           coalesce(pm.name, 'Sem forma') as nome,
+           count(*)                       as quantidade,
+           sum(c.total_cents)             as total_cents
+      from comandas c
+      left join public.payment_methods pm
+        on pm.id = c.payment_method_id and pm.organization_id = p_org
+     group by 1, 2
+  ),
+  profissional_por_moeda as (
+    select s.currency            as moeda,
+           co.attendant_user_id,
+           count(*)              as itens,
+           sum(co.amount_cents)  as comissao_cents
+      from public.commissions co
+      join public.sale_items si
+        on si.id = co.sale_item_id and si.organization_id = p_org
+      join comandas s on s.id = si.sale_id
+     where co.organization_id = p_org
+       and co.status <> 'reversed'
+     group by 1, 2
+  ),
+  servico_por_moeda as (
+    select s.currency           as moeda,
+           si.description       as nome,
+           sum(si.quantity)     as quantidade,
+           sum(si.total_cents)  as total_cents
+      from public.sale_items si
+      join comandas s on s.id = si.sale_id
+     where si.organization_id = p_org
+     group by 1, 2
+  ),
+  cliente_por_moeda as (
+    select c.currency           as moeda,
+           c.contact_id,
+           count(*)             as comandas,
+           sum(c.total_cents)   as total_cents
+      from comandas c
+     where c.contact_id is not null
+     group by 1, 2
   )
   select jsonb_build_object(
     'de', p_de,
@@ -34084,7 +34168,43 @@ as $$
       select jsonb_agg(jsonb_build_object('contact_id', contact_id, 'comandas', comandas, 'total_cents', total_cents)
              order by total_cents desc)
         from (select * from por_cliente order by total_cents desc limit 10) t
-    ), '[]'::jsonb)
+    ), '[]'::jsonb),
+    -- O corte de 10 vale POR MOEDA: a lista do real e a do euro são listas
+    -- diferentes, e cortar a soma misturada deixaria a moeda menor sem linha.
+    'por_moeda', coalesce((
+      select jsonb_object_agg(m.moeda, jsonb_build_object(
+        'entradas_cents', coalesce((select sum(l.amount_cents) from lancamentos l where l.currency = m.moeda and l.direction = 'in'), 0),
+        'saidas_cents',   coalesce((select sum(l.amount_cents) from lancamentos l where l.currency = m.moeda and l.direction = 'out'), 0),
+        'saldo_cents',    coalesce((select sum(case when l.direction = 'in' then l.amount_cents else -l.amount_cents end) from lancamentos l where l.currency = m.moeda), 0),
+        'comandas_finalizadas', (select count(*) from comandas c where c.currency = m.moeda),
+        'comandas_estornadas',  (select count(*) from comandas c where c.currency = m.moeda and c.reversed_at is not null),
+        'faturado_cents',       coalesce((select sum(c.total_cents) from comandas c where c.currency = m.moeda), 0),
+        'ticket_medio_cents',   coalesce((select sum(c.total_cents) / nullif(count(*), 0) from comandas c where c.currency = m.moeda), 0),
+        'por_forma', coalesce((
+          select jsonb_agg(jsonb_build_object('nome', f.nome, 'quantidade', f.quantidade, 'total_cents', f.total_cents)
+                 order by f.total_cents desc)
+            from forma_por_moeda f
+           where f.moeda = m.moeda
+        ), '[]'::jsonb),
+        'por_profissional', coalesce((
+          select jsonb_agg(jsonb_build_object('attendant_user_id', p.attendant_user_id, 'itens', p.itens, 'comissao_cents', p.comissao_cents)
+                 order by p.comissao_cents desc)
+            from profissional_por_moeda p
+           where p.moeda = m.moeda
+        ), '[]'::jsonb),
+        'por_servico', coalesce((
+          select jsonb_agg(jsonb_build_object('nome', t.nome, 'quantidade', t.quantidade, 'total_cents', t.total_cents)
+                 order by t.total_cents desc)
+            from (select * from servico_por_moeda sv where sv.moeda = m.moeda order by sv.total_cents desc limit 10) t
+        ), '[]'::jsonb),
+        'por_cliente', coalesce((
+          select jsonb_agg(jsonb_build_object('contact_id', t.contact_id, 'comandas', t.comandas, 'total_cents', t.total_cents)
+                 order by t.total_cents desc)
+            from (select * from cliente_por_moeda cl where cl.moeda = m.moeda order by cl.total_cents desc limit 10) t
+        ), '[]'::jsonb)
+      ))
+        from moedas m
+    ), '{}'::jsonb)
   );
 $$;
 
@@ -38764,6 +38884,503 @@ revoke execute on function public.fn_expurgar_observacoes_do_jev(int,int) from a
 revoke execute on function public.fn_expurgar_observacoes_do_jev(int,int) from authenticated;
 grant  execute on function public.fn_expurgar_observacoes_do_jev(int,int) to service_role;
 
+-- ---- os candidatos ao golden set viram linha de rótulo (migration 0428) ----
+--
+-- O candidato do matcher de skills (F3-09) e do classificador de etapa (F3-11)
+-- sai do disco (JSON em `GOLDEN_CANDIDATES_DIR`) e vira linha SEM texto de
+-- cliente, com ponteiro `lead_id` para quem quiser ler a conversa de verdade.
+-- ANTES da varredura de anon, como a 0421: a tabela nasce aqui para quem só
+-- aplica o baseline. Racional inteiro na migration 0428.
+create table if not exists public.golden_candidates (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  lead_id uuid,
+  job_id uuid not null,
+  fonte text not null
+    constraint golden_candidates_fonte_check check (fonte in ('skill_match_miss', 'stage_classifier_divergence')),
+  skill text,
+  motivo text,
+  estagio_sugerido text,
+  estagio_confirmado text,
+  constraint golden_candidates_rotulos_check check (
+    (fonte = 'skill_match_miss'
+      and skill is not null
+      and motivo is not null
+      and estagio_sugerido is null
+      and estagio_confirmado is null)
+    or (fonte = 'stage_classifier_divergence'
+      and estagio_sugerido is not null
+      and estagio_confirmado is not null
+      and skill is null
+      and motivo is null)
+  ),
+  created_at timestamptz not null default now()
+);
+
+comment on table public.golden_candidates is
+  'Candidatos ao golden set (near-miss de skill e divergência classificador×modelo), em RÓTULO: sem texto de cliente, com ponteiro lead_id para quem quiser ler a conversa de verdade. Escrita só do servidor (lib/agent-engine/agent); leitura por membro da organização. Expurgada por fn_expurgar_candidatos_do_golden (cron data-retention).';
+
+create index if not exists golden_candidates_criada_idx
+  on public.golden_candidates (created_at);
+create index if not exists golden_candidates_org_criada_idx
+  on public.golden_candidates (organization_id, created_at desc);
+create unique index if not exists golden_candidates_uma_por_job_skill_idx
+  on public.golden_candidates (organization_id, job_id, skill)
+  where fonte = 'skill_match_miss';
+create unique index if not exists golden_candidates_uma_por_job_divergencia_idx
+  on public.golden_candidates (organization_id, job_id)
+  where fonte = 'stage_classifier_divergence';
+
+alter table public.golden_candidates enable row level security;
+drop policy if exists tenant_isolation_golden_candidates_select on public.golden_candidates;
+create policy tenant_isolation_golden_candidates_select on public.golden_candidates
+  for select using (organization_id in (select public.fn_user_org_ids()));
+
+revoke all on public.golden_candidates from anon, authenticated;
+grant select on public.golden_candidates to authenticated;
+grant all on public.golden_candidates to service_role;
+
+create or replace function public.fn_expurgar_candidatos_do_golden(
+  p_retencao_dias int default null,
+  p_limite int default null
+) returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_dias int := greatest(coalesce(p_retencao_dias, 90), 30);
+  v_limite int := least(greatest(coalesce(p_limite, 1000), 1), 10000);
+  v_apagadas int;
+begin
+  with vencidas as (
+    select g.id from public.golden_candidates g
+     where g.created_at < now() - make_interval(days => v_dias)
+     order by g.created_at
+     limit v_limite
+  )
+  delete from public.golden_candidates g using vencidas v where g.id = v.id;
+  get diagnostics v_apagadas = row_count;
+  return v_apagadas;
+end;
+$$;
+revoke all    on function public.fn_expurgar_candidatos_do_golden(int,int) from public;
+revoke execute on function public.fn_expurgar_candidatos_do_golden(int,int) from anon;
+revoke execute on function public.fn_expurgar_candidatos_do_golden(int,int) from authenticated;
+grant  execute on function public.fn_expurgar_candidatos_do_golden(int,int) to service_role;
+
+-- ---- a retenção de mídia passa a existir (migration 0432) ----
+-- ---- a fila de remoção de mídia deixa de ser eterna (migration 0434) ----
+-- ---- a contagem do expurgo volta para o retorno (migration 0435) ----
+-- Ver o cabeçalho das DUAS migrations: a 0432 enfileira arquivo vencido e
+-- órfão na mesma fila da LGPD (o cron storage-redaction remove pelo Storage
+-- API); a 0434 (#1739) reabre `deleted`/`skipped` quando o mesmo caminho
+-- volta a existir e expurga linha `deleted` com mais de 90 dias; a 0435
+-- (#1765) devolve a contagem desse expurgo, que antes não aparecia nem no
+-- retorno nem na trilha. O corpo abaixo é a 0435 EDITADA NO LUGAR — ele tem
+-- de casar com o da última migration, senão quem instala pelo kit self-host
+-- fica com outra função de quem aplica a cadeia
+-- (apendice-do-baseline-nao-diverge-da-cadeia).
+create or replace function public.fn_enfileirar_midia_vencida(p_limite integer default 500)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, storage
+as $$
+declare
+  v_lim integer := greatest(1, least(coalesce(p_limite, 500), 5000));
+  v_vencidas integer := 0;
+  v_orfas integer := 0;
+  -- O que o expurgo apagou NESTA chamada (#1765). Começa em 0 para que a
+  -- rodada sem nada a expurgar devolva 0 — e não null, que o cron somaria
+  -- como se fosse apagado.
+  v_expurgadas integer := 0;
+  -- Janela do expurgo, em UM lugar só: é a constante que se muda amanhã.
+  v_janela_deleted interval := interval '90 days';
+begin
+  -- 0. EXPURGO: a linha `deleted` da RETENÇÃO já cumpriu o papel (o arquivo
+  --    saiu do bucket) e nada mais precisa dela — sem isto a fila cresce sem
+  --    teto (#1739, item 2). Só `deleted`: `skipped` é «o objeto já não
+  --    existe», `failed` é a prova de uma remoção que nunca passou das 3
+  --    tentativas, e a issue manda não mexer em nenhuma das duas.
+  --    E só a de retenção (`request_id is null`): a linha de pedido LGPD é o
+  --    ÚNICO registro por objeto de que a mídia do titular saiu do bucket — o
+  --    worker só troca o `status` e nada audita a remoção física. Ela sai
+  --    sozinha se o pedido for apagado (FK `on delete set null`).
+  --    O `GET DIAGNOSTICS` conta o que o DELETE apagou NESTA chamada (#1765):
+  --    sem ele a rodada que só expurgou é indistinguível, na trilha, da rodada
+  --    que não tinha o que fazer.
+  delete from public.storage_redaction_queue
+   where status = 'deleted'
+     and request_id is null
+     and coalesce(processed_at, enqueued_at) < now() - v_janela_deleted;
+  get diagnostics v_expurgadas = row_count;
+
+  -- 1. VENCIDAS: arquivo de mensagem mais velho que a retenção da organização.
+  --    A mensagem fica (texto, status, horário); só o arquivo sai, e a tela
+  --    mostra «Mídia indisponível». O piso de 30 dias é o mesmo do formulário.
+  with alvo as (
+    select m.id, m.organization_id, m.media_storage_path as caminho
+      from public.messages m
+      join public.organizations o on o.id = m.organization_id
+     where m.media_storage_path is not null
+       and m.created_at < now() - make_interval(days => greatest(coalesce(o.media_retention_days, 365), 30))
+     order by m.created_at
+     limit v_lim
+     for update of m skip locked
+  ), fila as (
+    -- O arquivo só vai para a fila quando nenhuma OUTRA mensagem o usa: a foto
+    -- de catálogo tem caminho fixo por conversa e é reaproveitada a cada
+    -- reenvio (`fotos-do-produto.ts`), então a mensagem de ontem pode apontar
+    -- para o mesmo arquivo da vencida. A vencida perde o caminho do mesmo
+    -- jeito; o arquivo sai quando a última referência vencer (aqui) ou no
+    -- passo 2, como órfão.
+    --
+    -- O `do update` é o conserto do #1739: se aquele caminho já saiu da fila
+    -- (`deleted`) ou o objeto já nem existia (`skipped`), um arquivo NOVO pode
+    -- estar gravado ali agora — e o `do nothing` da 0432 engolia este pedido
+    -- silenciosamente, deixando o arquivo novo fora da retenção PARA SEMPRE.
+    -- O `where` é a outra metade do conserto: `pending`/`failed` em curso não
+    -- são interrompidos (uma remoção em andamento não perde a tentativa).
+    insert into public.storage_redaction_queue (organization_id, bucket, object_path)
+    select distinct a.organization_id, 'whatsapp-media', a.caminho
+      from alvo a
+     where not exists (
+       select 1 from public.messages m2
+        where m2.media_storage_path = a.caminho
+          and m2.id not in (select id from alvo)
+     )
+    on conflict (bucket, object_path) do update
+      set status = 'pending',
+          attempts = 0,
+          enqueued_at = now(),
+          processed_at = null,
+          error_message = null
+      where storage_redaction_queue.status in ('deleted', 'skipped')
+    returning 1
+  ), limpas as (
+    update public.messages m
+       set media_storage_path = null, updated_at = now()
+      from alvo
+     where m.id = alvo.id
+    returning 1
+  )
+  select count(*) into v_vencidas from limpas;
+
+  -- 2. ÓRFÃOS: arquivo que nada no banco aponta — o rastro de conversa apagada.
+  --    Só as duas pastas que o CRM grava por mensagem e por contato:
+  --    `org/<conversa>/…` e `org/avatars/…`. `org/templates/…` (cabeçalho de
+  --    modelo) NUNCA entra: quem o usa guarda o link, não o caminho. Um dia de
+  --    carência cobre o envio que sobe o arquivo antes de gravar a mensagem.
+  with orfaos as (
+    select o.name as caminho, split_part(o.name, '/', 1)::uuid as org
+      from storage.objects o
+     where o.bucket_id = 'whatsapp-media'
+       and o.created_at < now() - interval '1 day'
+       and split_part(o.name, '/', 1) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       and exists (select 1 from public.organizations g where g.id::text = split_part(o.name, '/', 1))
+       and (
+         split_part(o.name, '/', 2) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+         or split_part(o.name, '/', 2) = 'avatars'
+       )
+       and not exists (select 1 from public.messages m where m.media_storage_path = o.name)
+       and not exists (select 1 from public.contacts c where c.avatar_storage_path = o.name)
+       -- Só linha EM CURSO segura o caminho (`pending`, ou `failed` que ainda
+       -- é o registro de uma remoção não feita). Linha `deleted`/`skipped`
+       -- NÃO bloqueia mais: é justamente o caso do avatar reaproveitado
+       -- (#1739) — o objeto novo no caminho antigo tinha de chegar no conflito
+       -- lá embaixo para ser reaberto, e este `not exists` o engolia antes.
+       and not exists (
+         select 1 from public.storage_redaction_queue q
+          where q.bucket = 'whatsapp-media' and q.object_path = o.name
+            and q.status not in ('deleted', 'skipped')
+       )
+     limit v_lim
+  ), fila as (
+    insert into public.storage_redaction_queue (organization_id, bucket, object_path)
+    select org, 'whatsapp-media', caminho from orfaos
+    on conflict (bucket, object_path) do update
+      set status = 'pending',
+          attempts = 0,
+          enqueued_at = now(),
+          processed_at = null,
+          error_message = null
+      where storage_redaction_queue.status in ('deleted', 'skipped')
+    returning 1
+  )
+  select count(*) into v_orfas from fila;
+
+  return jsonb_build_object('vencidas', v_vencidas, 'orfas', v_orfas, 'expurgadas', v_expurgadas);
+end;
+$$;
+
+revoke execute on function public.fn_enfileirar_midia_vencida(integer) from public, anon, authenticated;
+grant execute on function public.fn_enfileirar_midia_vencida(integer) to service_role;
+
+notify pgrst, 'reload schema';
+
+-- ---- conversão do Google Ads por etapa + venda sem valor (migration 0436) ----
+--
+-- Racional inteiro na migration 0436. Cria função, então fica ANTES da varredura de anon.
+create table if not exists public.google_ads_conversion_rules (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  stage_id uuid not null,
+  event_name text not null,
+  label text not null,
+  google_action_id text not null,
+  category text not null default 'DEFAULT',
+  included_in_conversions boolean not null default true,
+  channel text not null default 'todos',
+  enabled boolean not null default true,
+  configured_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid,
+  constraint google_ads_conversion_rules_action_numerica
+    check (google_action_id ~ '^[0-9]{1,32}$'),
+  constraint google_ads_conversion_rules_evento_conhecido
+    check (event_name = 'QualifiedLead' or event_name ~ '^Etapa:[0-9a-f-]{36}$'),
+  constraint google_ads_conversion_rules_canal_conhecido
+    check (channel in ('todos', 'whatsapp', 'outros')),
+  constraint google_ads_conversion_rules_categoria_conhecida
+    check (category in (
+      'DEFAULT', 'PAGE_VIEW', 'PURCHASE', 'SIGNUP', 'DOWNLOAD', 'ADD_TO_CART',
+      'BEGIN_CHECKOUT', 'SUBSCRIBE_PAID', 'PHONE_CALL_LEAD', 'IMPORTED_LEAD',
+      'SUBMIT_LEAD_FORM', 'BOOK_APPOINTMENT', 'REQUEST_QUOTE', 'GET_DIRECTIONS',
+      'OUTBOUND_CLICK', 'CONTACT', 'ENGAGEMENT', 'STORE_VISIT', 'STORE_SALE',
+      'QUALIFIED_LEAD', 'CONVERTED_LEAD'
+    )),
+  constraint google_ads_conversion_rules_label_curto
+    check (char_length(btrim(label)) between 1 and 100)
+);
+
+alter table public.google_ads_conversion_rules
+  drop constraint if exists google_ads_conversion_rules_stage_org_fk;
+alter table public.google_ads_conversion_rules
+  add constraint google_ads_conversion_rules_stage_org_fk
+  foreign key (organization_id, stage_id)
+  references public.crm_stages (organization_id, id)
+  on delete cascade;
+
+create unique index if not exists google_ads_conversion_rules_org_stage_uk
+  on public.google_ads_conversion_rules (organization_id, stage_id);
+create unique index if not exists google_ads_conversion_rules_org_event_uk
+  on public.google_ads_conversion_rules (organization_id, event_name);
+
+comment on table public.google_ads_conversion_rules is
+  'Qual ação de conversão do Google Ads cada etapa do funil envia quando um negócio entra nela. event_name é a chave do livro-razão ad_conversion_dispatches. Server-side only: RLS sem policy e grants revogados de anon/authenticated.';
+comment on column public.google_ads_conversion_rules.configured_at is
+  'Trava de retroatividade: só movimentos de etapa posteriores enviam. Regravada pelo gatilho quando a etapa ou a ação mudam.';
+comment on column public.google_ads_conversion_rules.channel is
+  'Por onde o negócio precisa ter entrado para enviar: todos, whatsapp (tem conversa vinculada) ou outros (sem conversa).';
+
+alter table public.google_ads_conversion_rules enable row level security;
+revoke all on public.google_ads_conversion_rules from anon, authenticated;
+grant select, insert, update, delete on public.google_ads_conversion_rules to service_role;
+
+drop trigger if exists trg_google_ads_conversion_rules_updated_at on public.google_ads_conversion_rules;
+create trigger trg_google_ads_conversion_rules_updated_at
+  before update on public.google_ads_conversion_rules
+  for each row execute function public.fn_set_updated_at();
+
+create or replace function public.fn_marcar_configuracao_regra_google()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    -- A migração importa o carimbo legado; inserções normais usam DEFAULT now().
+    new.configured_at := coalesce(new.configured_at, now());
+  elsif new.stage_id is distinct from old.stage_id
+     or new.google_action_id is distinct from old.google_action_id
+     or (new.enabled and not old.enabled) then
+    new.configured_at := now();
+  else
+    new.configured_at := old.configured_at;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.fn_marcar_configuracao_regra_google() from public, anon, authenticated;
+grant execute on function public.fn_marcar_configuracao_regra_google() to service_role;
+
+drop trigger if exists trg_marcar_configuracao_regra_google on public.google_ads_conversion_rules;
+create trigger trg_marcar_configuracao_regra_google
+  before insert or update on public.google_ads_conversion_rules
+  for each row execute function public.fn_marcar_configuracao_regra_google();
+
+-- A qualificação que já existia vira a primeira regra, com o nome de evento de
+-- sempre. `on conflict do nothing`: reaplicar não duplica nem sobrescreve a
+-- regra que o admin já editou. O `configured_at` herdado preserva a trava.
+insert into public.google_ads_conversion_rules
+  (organization_id, stage_id, event_name, label, google_action_id, category, configured_at)
+select c.organization_id, c.google_qualification_stage_id, 'QualifiedLead',
+       'Lead qualificado', c.google_qualification_action_id, 'QUALIFIED_LEAD',
+       coalesce(c.google_qualification_configured_at, now())
+  from public.ad_platform_connections c
+  join public.crm_stages s
+    on s.organization_id = c.organization_id and s.id = c.google_qualification_stage_id
+ where c.platform = 'google_ads'
+   and c.google_qualification_stage_id is not null
+   and c.google_qualification_action_id ~ '^[0-9]{1,32}$'
+on conflict do nothing;
+
+alter table public.ad_platform_connections
+  add column if not exists google_purchase_value_mode text not null default 'obrigatorio',
+  add column if not exists google_purchase_category text not null default 'PURCHASE',
+  add column if not exists google_send_hashed_phone boolean not null default false;
+
+alter table public.ad_platform_connections
+  drop constraint if exists ad_platform_connections_google_purchase_value_mode_check;
+alter table public.ad_platform_connections
+  add constraint ad_platform_connections_google_purchase_value_mode_check
+  check (google_purchase_value_mode in ('obrigatorio', 'quando_houver', 'nunca'));
+
+comment on column public.ad_platform_connections.google_purchase_value_mode is
+  'Negócio ganho sem valor: obrigatorio (não envia, padrão histórico), quando_houver (envia; valor só se existir), nunca (envia sempre sem valor).';
+comment on column public.ad_platform_connections.google_send_hashed_phone is
+  'Envia o telefone do contato em SHA-256 (E.164) com a conversão. Desligado por padrão: dado pessoal.';
+
+-- O reenvio passa a aceitar os eventos de etapa, com a mesma exigência da
+-- qualificação: só reenvia o que tem o retrato (quando + qual ação) gravado.
+create or replace function public.fn_solicitar_reenvio_conversao(p_org uuid, p_lead uuid, p_event text)
+returns boolean language plpgsql set search_path = public as $$
+declare v_linha public.ad_conversion_dispatches%rowtype;
+begin
+  if p_event is null or not (p_event in ('Purchase', 'QualifiedLead') or p_event ~ '^Etapa:[0-9a-f-]{36}$') then
+    return false;
+  end if;
+  select * into v_linha from public.ad_conversion_dispatches
+    where organization_id = p_org and lead_id = p_lead and event_name = p_event for update;
+  if not found or v_linha.status = 'sent' then return false; end if;
+  if p_event <> 'Purchase' and (v_linha.event_occurred_at is null or v_linha.google_action_id is null) then return false; end if;
+  if p_event = 'Purchase' and v_linha.remote_request_id is null and not exists (
+    select 1 from public.crm_leads where id = p_lead and organization_id = p_org and status = 'won'
+  ) then return false; end if;
+  if exists (select 1 from public.event_log where organization_id = p_org and entity_id = p_lead
+    and event_type = 'ad_conversion.retry_requested' and status in ('pending', 'processing')
+    and coalesce(payload->>'event_name', 'Purchase') = p_event) then return false; end if;
+  perform public.emit_event('ad_conversion.retry_requested', 'crm_lead', p_lead,
+    jsonb_build_object('event_name', p_event), '{}'::jsonb, p_org);
+  update public.ad_conversion_dispatches set reason = 'reprocessamento_solicitado', attempted_at = now()
+    where id = v_linha.id and organization_id = p_org;
+  return true;
+end;
+$$;
+revoke execute on function public.fn_solicitar_reenvio_conversao(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.fn_solicitar_reenvio_conversao(uuid, uuid, text) to service_role;
+
+notify pgrst, 'reload schema';
+
+-- ---- links rastreáveis nomeados (migration 0437) ----
+-- Links nomeados compartilham os refs existentes; o clique continua sendo consumido uma vez.
+create table if not exists public.ad_tracking_links (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  name text not null check (char_length(btrim(name)) between 1 and 100),
+  whatsapp_e164 text not null check (whatsapp_e164 ~ '^\+[1-9][0-9]{7,14}$'),
+  message_template text not null check (char_length(message_template) between 1 and 1000),
+  use_case text not null check (use_case in ('site','anuncio','organico')),
+  utm jsonb not null default '{}'::jsonb check (jsonb_typeof(utm) = 'object'),
+  enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (organization_id, id)
+);
+alter table public.ad_tracking_links enable row level security;
+revoke all on public.ad_tracking_links from public, anon, authenticated;
+grant select, insert, update, delete on public.ad_tracking_links to service_role;
+drop trigger if exists trg_ad_tracking_links_updated_at on public.ad_tracking_links;
+create trigger trg_ad_tracking_links_updated_at before update on public.ad_tracking_links
+  for each row execute function public.fn_set_updated_at();
+alter table public.google_ads_click_refs add column if not exists tracking_link_id uuid;
+alter table public.meta_ads_click_refs add column if not exists tracking_link_id uuid;
+alter table public.google_ads_click_refs drop constraint if exists google_click_tracking_link_org_fk;
+alter table public.google_ads_click_refs add constraint google_click_tracking_link_org_fk
+  foreign key (organization_id, tracking_link_id) references public.ad_tracking_links(organization_id, id);
+alter table public.meta_ads_click_refs drop constraint if exists meta_click_tracking_link_org_fk;
+alter table public.meta_ads_click_refs add constraint meta_click_tracking_link_org_fk
+  foreign key (organization_id, tracking_link_id) references public.ad_tracking_links(organization_id, id);
+create index if not exists google_click_tracking_link_idx on public.google_ads_click_refs(organization_id, tracking_link_id, created_at);
+create index if not exists meta_click_tracking_link_idx on public.meta_ads_click_refs(organization_id, tracking_link_id, created_at);
+
+-- Apenas service_role. O p_org é resolvido da sessão no servidor, nunca do browser.
+create or replace function public.fn_metricas_links_rastreaveis(p_org uuid)
+returns table(link_id uuid, clicks bigint, contacts bigint, leads bigint)
+language sql stable security definer set search_path = public as $$
+  with clicks as (
+    select tracking_link_id, contact_id from public.google_ads_click_refs
+      where organization_id = p_org and tracking_link_id is not null
+    union all
+    select tracking_link_id, contact_id from public.meta_ads_click_refs
+      where organization_id = p_org and tracking_link_id is not null
+  ), counts as (
+    select tracking_link_id, count(*) as n, count(distinct contact_id) as c
+      from clicks group by tracking_link_id
+  ), lead_counts as (
+    select c.tracking_link_id, count(distinct l.id) as n from clicks c
+      join public.crm_leads l on l.contact_id = c.contact_id and l.organization_id = p_org
+      group by c.tracking_link_id
+  )
+  select c.tracking_link_id, c.n, c.c, coalesce(l.n,0)
+    from counts c left join lead_counts l using(tracking_link_id);
+$$;
+revoke all on function public.fn_metricas_links_rastreaveis(uuid) from public, anon, authenticated;
+grant execute on function public.fn_metricas_links_rastreaveis(uuid) to service_role;
+
+notify pgrst, 'reload schema';
+
+-- ---- o aviso da Central anuncia no barramento que nasceu (migration 0442) ----
+--
+-- Ver o cabeçalho da migration: trigger AFTER INSERT em `agent_inbox_items`
+-- emite `central.aviso_criado` (item, kind, ref) para o push decidir o que vai
+-- ao celular. Sem I/O; falha do anúncio não impede o aviso de nascer; aviso de
+-- plataforma (organização nula) não anuncia. Função com as DUAS origens de
+-- EXECUTE revogadas. Entra ANTES da VARREDURA anon porque cria função.
+-- Idempotente (`create or replace` + `drop trigger if exists`).
+create or replace function public.fn_emit_aviso_da_central()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Aviso de PLATAFORMA (organização nula) não vai para o celular de ninguém.
+  if new.organization_id is null then
+    return null;
+  end if;
+  begin
+    perform public.emit_event(
+      'central.aviso_criado',
+      'agent_inbox_item',
+      new.id,
+      jsonb_build_object(
+        'item_id',  new.id,
+        'kind',     new.kind,
+        'ref_kind', new.ref_kind,
+        'ref_id',   new.ref_id
+      ),
+      '{}'::jsonb,
+      new.organization_id   -- SEMPRE de `new`: é o filtro de tenant
+    );
+  exception when others then
+    raise warning 'fn_emit_aviso_da_central: anúncio do aviso % falhou: %', new.id, sqlerrm;
+  end;
+  return null;              -- AFTER trigger: o retorno é ignorado
+end;
+$$;
+
+alter function public.fn_emit_aviso_da_central() owner to postgres;
+
+-- As DUAS origens de EXECUTE (doutrina de migrations, item 9). Função de
+-- trigger: ninguém a chama pela REST, então não há `grant` a ninguém.
+revoke all     on function public.fn_emit_aviso_da_central() from public;
+revoke execute on function public.fn_emit_aviso_da_central() from anon, authenticated;
+
+drop trigger if exists trg_aviso_da_central_criado on public.agent_inbox_items;
+create trigger trg_aviso_da_central_criado
+  after insert on public.agent_inbox_items
+  for each row execute function public.fn_emit_aviso_da_central();
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria
@@ -39800,3 +40417,96 @@ end $$;
 create index if not exists idx_crm_leads_retomado_de_lead
   on public.crm_leads (retomado_de_lead_id)
   where retomado_de_lead_id is not null;
+
+-- ---- em que etapa o negócio morreu (migration 0426, #1537) ----
+--
+-- Aditiva e idempotente: a coluna nasce `null` em toda linha existente (nenhuma
+-- perda anterior tem origem registrada — derivar retroativamente seria inventar
+-- dado) e a FK é `on delete set null` (apagar a etapa solta o ponteiro em vez de
+-- recusar a exclusão do funil). Quem PREENCHE é o gatilho
+-- `fn_crm_lead_close_on_stage`, redefinido acima no corpo que o banco usa.
+alter table public.crm_leads
+  add column if not exists lost_from_stage_id uuid;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'fk_crm_leads_lost_from_stage'
+      and conrelid = 'public.crm_leads'::regclass
+  ) then
+    alter table public.crm_leads
+      add constraint fk_crm_leads_lost_from_stage
+      foreign key (lost_from_stage_id)
+      references public.crm_stages(id)
+      on delete set null;
+  end if;
+end $$;
+
+-- ---- probabilidade de ganho por etapa (migration 0427) ----
+--
+-- Aditiva e idempotente: a coluna nasce null em toda linha existente, e null
+-- significa "esta etapa não tem probabilidade calibrada" — que a regra de
+-- previsão reporta à parte (balde "sem probabilidade"), nunca some como zero
+-- em silêncio. `is_won`/`is_lost` valem 100 e 0 na regra
+-- (`lib/leads/previsao.ts`), não gravado: gravar aqui seria um segundo lugar
+-- para a mesma verdade divergir.
+alter table public.crm_stages
+  add column if not exists win_probability smallint;
+
+alter table public.crm_stages
+  drop constraint if exists crm_stages_win_probability_range;
+
+alter table public.crm_stages
+  add constraint crm_stages_win_probability_range
+  check (win_probability is null or win_probability between 0 and 100);
+
+-- ---- a etapa que avisa a equipe na Central (migration 0440) ----
+--
+-- Marca por etapa, desligada por padrão: negócio que ENTRA numa etapa marcada
+-- abre um aviso na Central (kind `other`, ref `lead`, botão «Abrir negócio»).
+-- Quem lê é `lib/leads/aviso-de-etapa.handler.ts`, no evento
+-- `lead.stage_changed`. Aditiva e idempotente: coluna com default, nenhuma
+-- linha existente a corrigir antes.
+alter table public.crm_stages
+  add column if not exists avisar_na_central boolean not null default false;
+
+comment on column public.crm_stages.avisar_na_central is
+  'Negócio que entra nesta etapa abre um aviso na Central de avisos (0440).';
+
+notify pgrst, 'reload schema';
+
+-- ---- o bucket dos sons dos avisos da Central (migration 0441) ----
+-- Privado; só o service_role lê e grava, pela rota `app/api/v1/settings/sons`.
+-- Teto e tipos são os de `lib/notifications/sons-da-org.ts` (1 MB, MP3/OGG/WAV),
+-- conferidos por `tests/invariants/sons-dos-avisos.test.ts`. Sem policy em
+-- `storage.objects`. Idempotente.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('org-sounds', 'org-sounds', false, 1048576, array['audio/mpeg', 'audio/ogg', 'audio/wav'])
+on conflict (id) do update
+  set public             = excluded.public,
+      file_size_limit    = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+-- ---- ícone da aba: coluna da instalação (migration 0443) ----
+-- 0443 — Ícone da aba (favicon) opcional da instalação, subido em /admin/marca.
+-- Aditiva: sem arquivo, a aba segue com o ícone desenhado por `app/icon.tsx`
+-- (cor + inicial). Rollback de imagem não exige apagar coluna nem arquivo: o
+-- código anterior não lê a coluna e volta ao ícone desenhado.
+-- Só a instalação tem ícone: a aba é a mesma para todas as organizações, e o
+-- login (anterior a qualquer organização) também a mostra.
+-- Somente a rota `/api/v1/marca/logo` escreve o caminho, no mesmo bucket
+-- `brand-logos` e sob o mesmo prefixo `platform/` do logo.
+
+alter table public.platform_branding add column if not exists favicon_path text;
+update public.platform_branding set favicon_path = null
+ where favicon_path is not null
+   and favicon_path !~ '^platform/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg)$';
+alter table public.platform_branding drop constraint if exists platform_branding_favicon_path;
+alter table public.platform_branding add constraint platform_branding_favicon_path check (
+  favicon_path is null or
+  favicon_path ~ '^platform/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg)$'
+);
+comment on column public.platform_branding.favicon_path is
+  'Ícone da aba do navegador, subido pela tela. Caminho em brand-logos; null mantém o ícone desenhado (cor + inicial).';

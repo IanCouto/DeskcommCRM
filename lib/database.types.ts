@@ -976,6 +976,12 @@ export type Database = {
           test_event_code: string | null
           updated_at: string
           updated_by: string | null
+
+          google_send_hashed_phone: boolean
+
+          google_purchase_value_mode: string
+
+          google_purchase_category: string
         }
         Insert: {
           access_token_encrypted?: string | null
@@ -996,6 +1002,12 @@ export type Database = {
           test_event_code?: string | null
           updated_at?: string
           updated_by?: string | null
+
+          google_send_hashed_phone?: boolean
+
+          google_purchase_value_mode?: string
+
+          google_purchase_category?: string
         }
         Update: {
           access_token_encrypted?: string | null
@@ -1016,6 +1028,12 @@ export type Database = {
           test_event_code?: string | null
           updated_at?: string
           updated_by?: string | null
+
+          google_send_hashed_phone?: boolean
+
+          google_purchase_value_mode?: string
+
+          google_purchase_category?: string
         }
         Relationships: [
           {
@@ -4667,6 +4685,7 @@ export type Database = {
           external_id: string | null
           id: string
           last_activity_at: string | null
+          lost_from_stage_id: string | null
           lost_reason: string | null
           won_reason: string | null
           organization_id: string
@@ -4708,6 +4727,7 @@ export type Database = {
           pipeline_id: string
           position_in_stage?: number
           retomado_de_lead_id?: string | null
+          lost_from_stage_id?: string | null
           source?: string
           source_metadata?: Json
           stage_changed_at?: string | null
@@ -4740,6 +4760,7 @@ export type Database = {
           pipeline_id?: string
           position_in_stage?: number
           retomado_de_lead_id?: string | null
+          lost_from_stage_id?: string | null
           source?: string
           source_metadata?: Json
           stage_changed_at?: string | null
@@ -4782,6 +4803,13 @@ export type Database = {
           {
             foreignKeyName: "crm_leads_stage_id_fkey"
             columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_crm_leads_lost_from_stage"
+            columns: ["lost_from_stage_id"]
             isOneToOne: false
             referencedRelation: "crm_stages"
             referencedColumns: ["id"]
@@ -4864,6 +4892,7 @@ export type Database = {
           requires_human: boolean
           slug: string
           updated_at: string
+          win_probability: number | null
         }
         Insert: {
           agent_stage_hint?: string | null
@@ -4884,6 +4913,7 @@ export type Database = {
           requires_human?: boolean
           slug: string
           updated_at?: string
+          win_probability?: number | null
         }
         Update: {
           agent_stage_hint?: string | null
@@ -4904,6 +4934,7 @@ export type Database = {
           requires_human?: boolean
           slug?: string
           updated_at?: string
+          win_probability?: number | null
         }
         Relationships: [
           {
@@ -8965,6 +8996,8 @@ export type Database = {
           query_raw: Json
           token: string
           wbraid: string | null
+
+          tracking_link_id: string | null
         }
         Insert: {
           contact_id?: string | null
@@ -8977,6 +9010,8 @@ export type Database = {
           query_raw?: Json
           token: string
           wbraid?: string | null
+
+          tracking_link_id?: string | null
         }
         Update: {
           contact_id?: string | null
@@ -8989,6 +9024,8 @@ export type Database = {
           query_raw?: Json
           token?: string
           wbraid?: string | null
+
+          tracking_link_id?: string | null
         }
         Relationships: [
           {
@@ -9005,6 +9042,135 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+        ]
+      }
+
+      ad_tracking_links: {
+        Row: {
+          id: string
+          organization_id: string
+          name: string
+          whatsapp_e164: string
+          message_template: string
+          use_case: string
+          utm: Json
+          enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          name: string
+          whatsapp_e164: string
+          message_template: string
+          use_case: string
+          utm?: Json
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          name?: string
+          whatsapp_e164?: string
+          message_template?: string
+          use_case?: string
+          utm?: Json
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_tracking_links_organization_id_fkey"
+            columns: [
+              "organization_id"
+            ]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: [
+              "id"
+            ]
+          }
+        ]
+      }
+
+      google_ads_conversion_rules: {
+        Row: {
+          category: string
+          channel: string
+          configured_at: string
+          created_at: string
+          enabled: boolean
+          event_name: string
+          google_action_id: string
+          id: string
+          included_in_conversions: boolean
+          label: string
+          organization_id: string
+          stage_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          category?: string
+          channel?: string
+          configured_at?: string
+          created_at?: string
+          enabled?: boolean
+          event_name: string
+          google_action_id: string
+          id?: string
+          included_in_conversions?: boolean
+          label: string
+          organization_id: string
+          stage_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          category?: string
+          channel?: string
+          configured_at?: string
+          created_at?: string
+          enabled?: boolean
+          event_name?: string
+          google_action_id?: string
+          id?: string
+          included_in_conversions?: boolean
+          label?: string
+          organization_id?: string
+          stage_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_ads_conversion_rules_organization_id_fkey"
+            columns: [
+              "organization_id"
+            ]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: [
+              "id"
+            ]
+          },
+          {
+            foreignKeyName: "google_ads_conversion_rules_stage_org_fk"
+            columns: [
+              "organization_id",
+              "stage_id"
+            ]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: [
+              "organization_id",
+              "id"
+            ]
+          }
         ]
       }
     }
@@ -9750,6 +9916,18 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+
+      fn_metricas_links_rastreaveis: {
+        Args: {
+          p_org: string
+        }
+        Returns: {
+          link_id: string
+          clicks: number
+          contacts: number
+          leads: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
